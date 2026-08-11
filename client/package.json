@@ -1,0 +1,23 @@
+{
+  "name": "text-me-secretly-client",
+  "version": "0.1.0",
+  "description": "Privacy-first P2P messenger — Vanilla JS + Capacitor shell.",
+  "private": true,
+  "scripts": {
+    "sync": "cap sync",
+    "open:android": "cap open android",
+    "open:ios": "cap open ios",
+    "copy": "cap copy"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
+    "@capacitor/preferences": "^6.0.0",
+    "vpn-detector": "file:../plugins/vpn-detector"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}

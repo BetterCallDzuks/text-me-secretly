@@ -1,0 +1,13 @@
+{
+  "appId": "com.textmesecretly.app",
+  "appName": "Text Me Secretly",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "Preferences": {
+      "group": "TMSSecure"
+    }
+  }
+}

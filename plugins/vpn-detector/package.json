@@ -1,0 +1,29 @@
+{
+  "name": "vpn-detector",
+  "version": "0.1.0",
+  "description": "Capacitor plugin that reports whether the device currently routes through a VPN.",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "keywords": ["capacitor", "plugin", "vpn"],
+  "author": "Text Me Secretly",
+  "license": "MIT",
+  "devDependencies": {
+    "@capacitor/core": "^6.0.0",
+    "typescript": "^5.4.0"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^6.0.0"
+  }
+}
