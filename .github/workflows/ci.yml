@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  client:
+    name: Client (crypto, identity, e2ee)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Vendored crypto bundles are up to date
+        run: |
+          npm run build:vendor
+          if ! git diff --quiet -- www/js/vendor; then
+            echo "::error::Vendored bundles are stale. Run 'cd client && npm run build:vendor' and commit the result."
+            git --no-pager diff --stat -- www/js/vendor
+            exit 1
+          fi
+      - run: npm test
+
+  server:
+    name: Server (subscription, turn)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
