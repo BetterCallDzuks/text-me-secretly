@@ -17,7 +17,7 @@
 // the passphrase; the passphrase is required only to re-derive on a new device.
 
 import { store } from './storage.js';
-import { curve } from './vendor/noise-xx.js';
+import { curve, ready as cryptoReady } from './vendor/noise-xx.js';
 import {
   generateMnemonic,
   validateMnemonic,
@@ -32,6 +32,7 @@ let cached = null; // { id, keyPair, mnemonic, hasPassphrase }
 
 /** Derive + persist the full identity from a recovery phrase (+ passphrase). */
 async function deriveAndStore(mnemonic, passphrase = '') {
+  await cryptoReady; // curve.generateSeedKeyPair runs on libsodium WASM
   const normalized = normalizeMnemonic(mnemonic);
   const keyPair = curve.generateSeedKeyPair(mnemonicToSeed32(normalized, passphrase));
   const publicKey = new Uint8Array(keyPair.publicKey);

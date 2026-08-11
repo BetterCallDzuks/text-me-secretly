@@ -129,18 +129,26 @@ Noise_XX_25519_ChaChaPoly_BLAKE2b
   chunk.
 - **Tested:** two peers complete the XX handshake, exchange encrypted text and
   media both ways, a tampered ciphertext is rejected by Poly1305, and an
-  identity-mismatch (MITM) attempt is rejected.
+  identity-mismatch (MITM) attempt is rejected — all running on the libsodium
+  WASM backend below.
+
+**Primitive backend — audited libsodium WASM.** noise-handshake normally calls
+the pure-JS `sodium-javascript`; the build **aliases `sodium-universal` to
+`client/build/sodium-adapter.mjs`**, a thin shim that implements the exact slice
+of the API noise-handshake uses (X25519 `crypto_kx`/`crypto_scalarmult`, BLAKE2b
+`crypto_generichash`, ChaCha20-Poly1305 AEAD, `memzero`) on top of the official
+audited **libsodium WASM** (`libsodium-wrappers`, jedisct1). The WASM is embedded
+in the bundle (no external fetch, CSP-safe). It initialises asynchronously, so
+`ready` is awaited at app boot before any key derivation or handshake.
+Backward-compatible: `crypto_kx_seed_keypair` is byte-identical to the old
+backend, so existing anonIds are unchanged (verified in tests).
 
 **Build note:** the vendored crypto libraries are the *only* part of the client
 with a build step. `npm run build:vendor` bundles `client/build/*.mjs` (via
 esbuild) into two committed, self-contained ES modules under
-`client/www/js/vendor/` (`noise-xx.js`, `mnemonic.js`), so the app still loads
-buildless. Everything else stays vanilla JS.
-
-**In-browser primitive:** the Noise bundle uses `sodium-javascript` (a pure-JS
-port of libsodium) for the WebView. The Noise *protocol* implementation is
-production-grade; the further hardening step is to back it with the official
-audited **libsodium WASM** build.
+`client/www/js/vendor/` (`noise-xx.js` ≈ 500 KB with embedded WASM,
+`mnemonic.js`), so the app still loads buildless. Everything else stays vanilla
+JS.
 
 ---
 
@@ -275,7 +283,8 @@ text-me-secretly/
     ├── package.json              # + build:vendor scripts (esbuild) & crypto dev deps
     ├── capacitor.config.json
     ├── build/                    # bundle entries (the only client build step)
-    │   ├── noise-entry.mjs       # re-exports Noise XX
+    │   ├── noise-entry.mjs       # re-exports Noise XX + libsodium `ready`
+    │   ├── sodium-adapter.mjs    # sodium-universal API shim over libsodium WASM
     │   └── mnemonic-entry.mjs    # re-exports BIP39 mnemonic helpers
     └── www/
         ├── index.html
@@ -287,7 +296,7 @@ text-me-secretly/
             ├── crypto.js         # Web Crypto: base32/sha256, fingerprint, RS256 verify
             ├── e2ee.js           # drives the Noise XX handshake + transport framing
             ├── vendor/
-            │   ├── noise-xx.js   # GENERATED: noise-handshake + sodium-javascript
+            │   ├── noise-xx.js   # GENERATED: noise-handshake on libsodium WASM
             │   └── mnemonic.js   # GENERATED: @scure/bip39 + @noble/hashes
             ├── storage.js        # Preferences/localStorage KV (no message bodies)
             ├── signaling.js      # WebSocket signaling client
@@ -424,8 +433,9 @@ location / {
 Implemented:
 
 - **Application-level E2EE via Noise XX** (§1b): the audited `noise-handshake`
-  library (`Noise_XX_25519_ChaChaPoly_BLAKE2b`), with static keys bound to
-  anonIds so a key-swap MITM is detected. Forward secrecy from XX ephemerals.
+  library (`Noise_XX_25519_ChaChaPoly_BLAKE2b`) on the **audited libsodium WASM**
+  backend, with static keys bound to anonIds so a key-swap MITM is detected.
+  Forward secrecy from XX ephemerals.
 - **RS256 offline token verification** (§1): peers verify subscription proofs
   with the server's public key, no round-trip.
 - **TURN with ephemeral credentials** (§1c) for symmetric-NAT fallback.
@@ -436,10 +446,10 @@ Implemented:
 
 Still required before a real launch:
 
-- **Back Noise with the audited libsodium WASM.** The Noise *protocol* impl is
-  production-grade (powers Keet), but the in-browser primitive is
-  `sodium-javascript` (a pure-JS port). Swap in the official libsodium WASM
-  backend, and get the full integration reviewed.
+- **Get the full crypto integration independently reviewed.** The primitives are
+  now audited (libsodium WASM) and the Noise impl is production-grade, but the
+  glue — the `sodium-adapter.mjs` shim, framing, and identity binding — has not
+  had an external audit.
 - **Pin the signing key** (`EXPECTED_JWT_KID`) and plan RSA key rotation.
 - The VPN check deters, but cannot cryptographically prove, a VPN on a
   compromised device.

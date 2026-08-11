@@ -17,6 +17,7 @@ import {
 import { vpnGate } from './vpn.js';
 import { Signaling } from './signaling.js';
 import { PeerConnection } from './webrtc.js';
+import { ready as cryptoReady } from './vendor/noise-xx.js';
 import { E2EESession } from './e2ee.js';
 import { Messaging } from './messaging.js';
 import { purgeAll } from './ephemeral.js';
@@ -577,6 +578,11 @@ ui.gateRecheck.addEventListener('click', async () => {
 
 (async function boot() {
   setApiBase(CONFIG.API_BASE);
+
+  // Initialise the audited libsodium WASM before any key derivation or
+  // handshake (identity derivation below depends on it).
+  await cryptoReady;
+
   state.identity = await getIdentity();
   state.myId = state.identity.id;
 
