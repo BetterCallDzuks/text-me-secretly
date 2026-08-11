@@ -251,6 +251,8 @@ polled every 4s as a safety net.
 text-me-secretly/
 ├── README.md                     # this file (spec + explanation)
 ├── .gitignore
+├── .github/
+│   └── workflows/ci.yml          # runs client + server tests on push/PR
 ├── scripts/
 │   └── deploy.sh                 # PM2 setup/update for an Ubuntu VPS (no Docker)
 │
@@ -262,13 +264,14 @@ text-me-secretly/
 │   ├── .env.example
 │   ├── ecosystem.config.js       # PM2 process definition
 │   ├── server.js                 # Express REST + ws signaling on one port
-│   └── src/
-│       ├── config.js             # env loader + RSA key/TURN config
-│       ├── keys.js               # RSA keypair auto-gen + public JWK (RS256)
-│       ├── signaling.js          # WebRTC signaling relay (no content inspection)
-│       ├── subscription.js       # RS256 JWT issue/verify
-│       ├── turn.js               # ephemeral TURN credentials (coturn REST)
-│       └── payment.js            # MOCK payment gateway (swap for Stripe here)
+│   ├── src/
+│   │   ├── config.js             # env loader + RSA key/TURN config
+│   │   ├── keys.js               # RSA keypair auto-gen + public JWK (RS256)
+│   │   ├── signaling.js          # WebRTC signaling relay (no content inspection)
+│   │   ├── subscription.js       # RS256 JWT issue/verify
+│   │   ├── turn.js               # ephemeral TURN credentials (coturn REST)
+│   │   └── payment.js            # MOCK payment gateway (swap for Stripe here)
+│   └── test/                     # node --test: subscription, turn
 │
 ├── plugins/
 │   └── vpn-detector/             # Custom Capacitor plugin
@@ -286,6 +289,7 @@ text-me-secretly/
     │   ├── noise-entry.mjs       # re-exports Noise XX + libsodium `ready`
     │   ├── sodium-adapter.mjs    # sodium-universal API shim over libsodium WASM
     │   └── mnemonic-entry.mjs    # re-exports BIP39 mnemonic helpers
+    ├── test/                     # node --test: crypto, identity, mnemonic, e2ee
     └── www/
         ├── index.html
         ├── css/style.css
@@ -425,6 +429,38 @@ location / {
     proxy_set_header Host $host;
 }
 ```
+
+---
+
+## 7. Tests & CI
+
+Both packages ship a test suite built on Node's built-in runner (`node --test`)
+— no extra frameworks, and the client tests exercise the real vendored crypto
+bundles.
+
+```bash
+cd client && npm test    # crypto (RS256), identity/passphrase, mnemonic, Noise XX e2ee
+cd server && npm test    # subscription RS256 round-trip, TURN ephemeral credentials
+```
+
+Client tests run under Node via small browser-global shims (`test/_setup.mjs`).
+Coverage highlights:
+
+- **crypto** — base32/fingerprint determinism; RS256 JWT verify accepts valid
+  tokens and rejects tampered / expired / wrong-sub / wrong-audience.
+- **identity / mnemonic** — deterministic derivation; passphrase changes the id
+  and restores exactly; empty passphrase == passphrase-less; invalid phrases
+  rejected.
+- **e2ee** — the Noise XX handshake establishes on the libsodium WASM backend,
+  encrypts text + media both ways, drops tampered ciphertext (Poly1305), and
+  rejects an identity-mismatch MITM.
+- **server** — issued RS256 tokens verify for the right anonId and are rejected
+  for a different one; TURN credentials match coturn's HMAC scheme.
+
+**GitHub Actions** (`.github/workflows/ci.yml`) runs both suites on every push
+and PR, and fails if the committed vendored bundles (`client/www/js/vendor/*`)
+don't match a fresh `npm run build:vendor` — so a source change without a rebuild
+can't slip through.
 
 ---
 
