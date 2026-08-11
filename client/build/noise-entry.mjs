@@ -9,10 +9,16 @@
 // powers the Keet P2P messenger. Protocol suite:
 //   Noise_XX_25519_ChaChaPoly_BLAKE2b
 //
-// Regenerate the bundle after changing the pinned version:
+// Primitives: the build aliases `sodium-universal` to ./sodium-adapter.mjs,
+// which is backed by the OFFICIAL AUDITED libsodium WASM (libsodium-wrappers).
+// `ready` resolves once WASM is initialised — the app must await it before any
+// key derivation or handshake.
+//
+// Regenerate the bundle after changing a pinned version:
 //   cd client && npm install && npm run build:noise
 
 import Noise from 'noise-handshake';
 import curve from 'noise-handshake/dh';
+import { ready } from './sodium-adapter.mjs';
 
-export { Noise, curve };
+export { Noise, curve, ready };

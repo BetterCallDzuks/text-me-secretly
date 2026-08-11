@@ -22,7 +22,7 @@
 // Inside a decrypted transport message, a 1-byte tag marks the payload —
 //   0x01 = JSON frame, 0x02 = raw media chunk.
 
-import { Noise } from './vendor/noise-xx.js';
+import { Noise, ready as cryptoReady } from './vendor/noise-xx.js';
 import { fingerprintOfRawKey, utf8 } from './crypto.js';
 
 const PREFIX_HANDSHAKE = 0x00;
@@ -69,6 +69,7 @@ export class E2EESession extends EventTarget {
 
   /** Initialise the Noise state and, if initiator, send the first message. */
   async start() {
+    await cryptoReady; // ensure libsodium WASM is initialised
     this.hs = new Noise('XX', this.initiator, this.identity.keyPair);
     this.hs.initialise(PROLOGUE);
     if (this.initiator) {

@@ -129,18 +129,26 @@ Noise_XX_25519_ChaChaPoly_BLAKE2b
   chunk.
 - **Tested:** two peers complete the XX handshake, exchange encrypted text and
   media both ways, a tampered ciphertext is rejected by Poly1305, and an
-  identity-mismatch (MITM) attempt is rejected.
+  identity-mismatch (MITM) attempt is rejected — all running on the libsodium
+  WASM backend below.
+
+**Primitive backend — audited libsodium WASM.** noise-handshake normally calls
+the pure-JS `sodium-javascript`; the build **aliases `sodium-universal` to
+`client/build/sodium-adapter.mjs`**, a thin shim that implements the exact slice
+of the API noise-handshake uses (X25519 `crypto_kx`/`crypto_scalarmult`, BLAKE2b
+`crypto_generichash`, ChaCha20-Poly1305 AEAD, `memzero`) on top of the official
+audited **libsodium WASM** (`libsodium-wrappers`, jedisct1). The WASM is embedded
+in the bundle (no external fetch, CSP-safe). It initialises asynchronously, so
+`ready` is awaited at app boot before any key derivation or handshake.
+Backward-compatible: `crypto_kx_seed_keypair` is byte-identical to the old
+backend, so existing anonIds are unchanged (verified in tests).
 
 **Build note:** the vendored crypto libraries are the *only* part of the client
 with a build step. `npm run build:vendor` bundles `client/build/*.mjs` (via
 esbuild) into two committed, self-contained ES modules under
-`client/www/js/vendor/` (`noise-xx.js`, `mnemonic.js`), so the app still loads
-buildless. Everything else stays vanilla JS.
-
-**In-browser primitive:** the Noise bundle uses `sodium-javascript` (a pure-JS
-port of libsodium) for the WebView. The Noise *protocol* implementation is
-production-grade; the further hardening step is to back it with the official
-audited **libsodium WASM** build.
+`client/www/js/vendor/` (`noise-xx.js` ≈ 500 KB with embedded WASM,
+`mnemonic.js`), so the app still loads buildless. Everything else stays vanilla
+JS.
 
 ---
 
@@ -156,23 +164,34 @@ account server:
 - **Private key = recovery phrase (login/backup).** On first run the app mints a
   **12-word BIP39 mnemonic** (via the audited `@scure/bip39`) and derives the
   X25519 static keypair deterministically from it:
-  `mnemonic → BIP39 seed → SHA-256(domain-tagged) → curve.generateSeedKeyPair`.
+  `mnemonic (+ passphrase) → BIP39 seed → SHA-256(domain-tagged) → curve.generateSeedKeyPair`.
   Entering the same phrase on any device restores the same keypair and the same
-  anonId — that's login. Only the mnemonic is persisted locally; the keypair is
-  re-derived on launch.
+  anonId — that's login. The derived keypair is persisted locally, so normal
+  launches never prompt for the passphrase.
+- **Optional passphrase (second factor).** A BIP39 "25th word": with a passphrase
+  set, the written phrase *alone* can't restore the account. It is **never
+  stored**, and because it changes the derived keypair it changes the anonId —
+  so setting/removing it is switching to a different address (the UI says so).
+  An empty passphrase reproduces the original derivation, so existing identities
+  are unchanged.
+- **Safety number.** The anonId *is* the identity-key fingerprint, so the chat
+  header shows a **🔒 verified** bar; tapping it reveals both peers' safety
+  numbers (grouped for reading aloud). If both devices show the same pair,
+  there's no one in the middle.
 - **UI:** the 🔑 account panel shows the shareable ID, reveals the recovery
-  phrase for backup (with a "never share this" warning), and accepts a phrase to
-  restore/log in (which re-registers signaling under the restored id). A
-  first-run prompt nudges the user to save the phrase.
-- **Tested:** a phrase deterministically yields the same anonId; different
-  phrases yield different ids; case/whitespace is normalised; and mnemonic-
-  derived identities complete a real Noise XX handshake.
+  phrase for backup (with a "never share this" warning), lets you add/remove a
+  passphrase, and accepts a phrase (+ optional passphrase) to restore/log in
+  (re-registering signaling under the restored id). A first-run prompt nudges
+  the user to save the phrase.
+- **Tested:** a phrase deterministically yields the same anonId; a passphrase
+  changes it deterministically and restores exactly; an empty passphrase equals
+  the passphrase-less derivation; the keypair persists and reloads without the
+  passphrase; and mnemonic-derived identities complete a real Noise XX handshake.
 
-> Security note: the recovery phrase is now the master secret. Anyone who learns
-> it can restore the account and read that account's *future* messages (past
-> messages are protected by Noise's forward secrecy). This is the standard
-> mnemonic-wallet trade-off — surface it clearly in the UI (done) and consider
-> an optional user passphrase on top of the mnemonic for a launch build.
+> Security note: the recovery phrase (plus passphrase, if set) is the master
+> secret. Whoever holds it can restore the account and read its *future* messages
+> (past messages stay protected by Noise's forward secrecy) — the standard
+> mnemonic-wallet trade-off, surfaced in the UI.
 
 ---
 
@@ -264,7 +283,8 @@ text-me-secretly/
     ├── package.json              # + build:vendor scripts (esbuild) & crypto dev deps
     ├── capacitor.config.json
     ├── build/                    # bundle entries (the only client build step)
-    │   ├── noise-entry.mjs       # re-exports Noise XX
+    │   ├── noise-entry.mjs       # re-exports Noise XX + libsodium `ready`
+    │   ├── sodium-adapter.mjs    # sodium-universal API shim over libsodium WASM
     │   └── mnemonic-entry.mjs    # re-exports BIP39 mnemonic helpers
     └── www/
         ├── index.html
@@ -276,7 +296,7 @@ text-me-secretly/
             ├── crypto.js         # Web Crypto: base32/sha256, fingerprint, RS256 verify
             ├── e2ee.js           # drives the Noise XX handshake + transport framing
             ├── vendor/
-            │   ├── noise-xx.js   # GENERATED: noise-handshake + sodium-javascript
+            │   ├── noise-xx.js   # GENERATED: noise-handshake on libsodium WASM
             │   └── mnemonic.js   # GENERATED: @scure/bip39 + @noble/hashes
             ├── storage.js        # Preferences/localStorage KV (no message bodies)
             ├── signaling.js      # WebSocket signaling client
@@ -413,24 +433,23 @@ location / {
 Implemented:
 
 - **Application-level E2EE via Noise XX** (§1b): the audited `noise-handshake`
-  library (`Noise_XX_25519_ChaChaPoly_BLAKE2b`), with static keys bound to
-  anonIds so a key-swap MITM is detected. Forward secrecy from XX ephemerals.
+  library (`Noise_XX_25519_ChaChaPoly_BLAKE2b`) on the **audited libsodium WASM**
+  backend, with static keys bound to anonIds so a key-swap MITM is detected.
+  Forward secrecy from XX ephemerals.
 - **RS256 offline token verification** (§1): peers verify subscription proofs
   with the server's public key, no round-trip.
 - **TURN with ephemeral credentials** (§1c) for symmetric-NAT fallback.
-- **Recoverable identity** (§1b′): BIP39 recovery phrase → deterministic X25519
-  keypair; public-key fingerprint is the shareable anonId.
+- **Recoverable identity** (§1b′): BIP39 recovery phrase (+ optional passphrase)
+  → deterministic X25519 keypair; public-key fingerprint is the shareable anonId.
+- **Safety-number verification** (§1b′): the chat header shows a verified bar
+  revealing both peers' identity-key fingerprints for out-of-band comparison.
 
 Still required before a real launch:
 
-- **Back Noise with the audited libsodium WASM.** The Noise *protocol* impl is
-  production-grade (powers Keet), but the in-browser primitive is
-  `sodium-javascript` (a pure-JS port). Swap in the official libsodium WASM
-  backend, and get the full integration reviewed.
-- Show the peer's anonId (the static-key fingerprint / **safety number**) in the
-  chat header for out-of-band verification.
-- Consider an **optional user passphrase** layered on the recovery phrase (the
-  phrase is now the master secret; a passphrase adds a second factor).
+- **Get the full crypto integration independently reviewed.** The primitives are
+  now audited (libsodium WASM) and the Noise impl is production-grade, but the
+  glue — the `sodium-adapter.mjs` shim, framing, and identity binding — has not
+  had an external audit.
 - **Pin the signing key** (`EXPECTED_JWT_KID`) and plan RSA key rotation.
 - The VPN check deters, but cannot cryptographically prove, a VPN on a
   compromised device.

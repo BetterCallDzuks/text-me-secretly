@@ -3003,8 +3003,9 @@ function validateMnemonic2(phrase) {
     return false;
   }
 }
-function mnemonicToSeed32(phrase) {
-  const bip39Seed = mnemonicToSeedSync(normalizeMnemonic(phrase), "text-me-secretly");
+function mnemonicToSeed32(phrase, userPassphrase = "") {
+  const bip39Passphrase = "text-me-secretly" + (userPassphrase || "");
+  const bip39Seed = mnemonicToSeedSync(normalizeMnemonic(phrase), bip39Passphrase);
   return sha256(concat(new Uint8Array(bip39Seed), enc.encode("tms-x25519-identity")));
 }
 export {

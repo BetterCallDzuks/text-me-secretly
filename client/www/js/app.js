@@ -8,10 +8,16 @@
 //   4. Run the freemium-gated messaging protocol.
 
 import { CONFIG } from './config.js';
-import { getIdentity, getMnemonic, restoreFromMnemonic } from './identity.js';
+import {
+  getIdentity,
+  getMnemonic,
+  restoreFromMnemonic,
+  setPassphrase,
+} from './identity.js';
 import { vpnGate } from './vpn.js';
 import { Signaling } from './signaling.js';
 import { PeerConnection } from './webrtc.js';
+import { ready as cryptoReady } from './vendor/noise-xx.js';
 import { E2EESession } from './e2ee.js';
 import { Messaging } from './messaging.js';
 import { purgeAll } from './ephemeral.js';
@@ -56,10 +62,18 @@ const ui = {
   acctPhrase: $('acct-phrase'),
   acctReveal: $('acct-reveal'),
   acctCopyPhrase: $('acct-copy-phrase'),
+  acctPassphraseState: $('acct-passphrase-state'),
+  acctSetPass: $('acct-set-pass'),
+  acctApplyPass: $('acct-apply-pass'),
   acctRestoreInput: $('acct-restore-input'),
+  acctRestorePass: $('acct-restore-pass'),
   acctRestore: $('acct-restore'),
   acctMsg: $('acct-msg'),
   acctClose: $('acct-close'),
+  safetyBar: $('safety-bar'),
+  safetyDetail: $('safety-detail'),
+  safetyTheir: $('safety-their'),
+  safetyMine: $('safety-mine'),
 };
 
 const state = {
@@ -248,10 +262,18 @@ function teardownPeer(reason) {
 
 // --- Chat UI ----------------------------------------------------------------
 
+function groupId(id) {
+  return (id.match(/.{1,4}/g) || [id]).join(' ');
+}
+
 async function openChatUI() {
   ui.chat.classList.remove('hidden');
   ui.peerLabel.textContent = state.peerId;
   ui.connStatus.textContent = 'Connected (P2P · end-to-end encrypted).';
+  // Populate the safety numbers (identity-key fingerprints) for verification.
+  ui.safetyTheir.textContent = groupId(state.peerId);
+  ui.safetyMine.textContent = groupId(state.myId);
+  ui.safetyDetail.classList.add('hidden');
   await refreshQuota();
   systemBubble(
     '🔒 End-to-end encrypted & identity-verified. Text auto-deletes after 12h; media is view-once.'
@@ -414,8 +436,33 @@ function openAccount() {
   ui.acctReveal.classList.remove('hidden');
   ui.acctCopyPhrase.classList.add('hidden');
   ui.acctRestoreInput.value = '';
+  ui.acctRestorePass.value = '';
+  ui.acctSetPass.value = '';
   ui.acctMsg.textContent = '';
+  const protectedByPass = state.identity && state.identity.hasPassphrase;
+  ui.acctPassphraseState.classList.toggle('hidden', !protectedByPass);
+  if (protectedByPass) ui.acctPassphraseState.textContent = 'passphrase on';
   ui.account.classList.remove('hidden');
+}
+
+/**
+ * Switch the live identity to `identity` (from a restore or a passphrase
+ * change) and re-register signaling under the new id.
+ */
+function switchIdentity(identity, msg) {
+  state.identity = identity;
+  state.myId = identity.id;
+  ui.myId.textContent = identity.id;
+  ui.acctId.textContent = identity.id;
+  teardownPeer('Identity changed.');
+  if (state.signaling) {
+    state.signaling.disconnect();
+    state.signaling.connect(state.myId);
+  }
+  ui.acctMsg.textContent = msg;
+  const protectedByPass = !!identity.hasPassphrase;
+  ui.acctPassphraseState.classList.toggle('hidden', !protectedByPass);
+  if (protectedByPass) ui.acctPassphraseState.textContent = 'passphrase on';
 }
 
 async function revealPhrase() {
@@ -432,23 +479,31 @@ async function doRestore() {
   ui.acctRestore.disabled = true;
   ui.acctMsg.textContent = 'Restoring…';
   try {
-    const identity = await restoreFromMnemonic(phrase);
-    // Switch the live identity over and re-register signaling under the new id.
-    state.identity = identity;
-    state.myId = identity.id;
-    ui.myId.textContent = identity.id;
-    ui.acctId.textContent = identity.id;
-    teardownPeer('Identity restored.');
-    if (state.signaling) {
-      state.signaling.disconnect();
-      state.signaling.connect(state.myId);
-    }
-    ui.acctMsg.textContent = 'Restored. You are now logged in as this ID.';
+    const identity = await restoreFromMnemonic(phrase, ui.acctRestorePass.value);
+    switchIdentity(identity, 'Restored. You are now logged in as this ID.');
     ui.acctRestoreInput.value = '';
+    ui.acctRestorePass.value = '';
   } catch {
     ui.acctMsg.textContent = 'That is not a valid 12-word recovery phrase.';
   } finally {
     ui.acctRestore.disabled = false;
+  }
+}
+
+async function applyPassphrase() {
+  ui.acctApplyPass.disabled = true;
+  ui.acctMsg.textContent = 'Applying…';
+  try {
+    const identity = await setPassphrase(ui.acctSetPass.value);
+    const msg = ui.acctSetPass.value
+      ? 'Passphrase set. Your ID changed — share the new one.'
+      : 'Passphrase removed. Your ID changed back.';
+    switchIdentity(identity, msg);
+    ui.acctSetPass.value = '';
+  } catch {
+    ui.acctMsg.textContent = 'Could not apply the passphrase.';
+  } finally {
+    ui.acctApplyPass.disabled = false;
   }
 }
 
@@ -463,6 +518,10 @@ ui.acctCopyPhrase.addEventListener('click', async () => {
   setTimeout(() => (ui.acctCopyPhrase.textContent = 'Copy'), 1500);
 });
 ui.acctRestore.addEventListener('click', doRestore);
+ui.acctApplyPass.addEventListener('click', applyPassphrase);
+ui.safetyBar.addEventListener('click', () =>
+  ui.safetyDetail.classList.toggle('hidden')
+);
 
 // --- Event listeners --------------------------------------------------------
 
@@ -519,6 +578,11 @@ ui.gateRecheck.addEventListener('click', async () => {
 
 (async function boot() {
   setApiBase(CONFIG.API_BASE);
+
+  // Initialise the audited libsodium WASM before any key derivation or
+  // handshake (identity derivation below depends on it).
+  await cryptoReady;
+
   state.identity = await getIdentity();
   state.myId = state.identity.id;
 
