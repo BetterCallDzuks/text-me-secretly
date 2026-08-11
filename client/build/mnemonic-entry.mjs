@@ -47,12 +47,20 @@ export function validateMnemonic(phrase) {
 }
 
 /**
- * Deterministic 32-byte X25519 seed from the mnemonic. A fixed app-level
- * passphrase namespaces the seed to this app; a domain-separation tag then
- * derives the curve seed. Feed the result to the Noise curve's
- * generateSeedKeyPair().
+ * Deterministic 32-byte X25519 seed from the mnemonic and an OPTIONAL user
+ * passphrase (a BIP39 "25th word" second factor).
+ *
+ * The BIP39 passphrase is `"text-me-secretly" + userPassphrase`:
+ *   - an empty userPassphrase reproduces the original app-namespaced seed, so
+ *     existing (passphrase-less) identities are unchanged;
+ *   - a non-empty userPassphrase yields a different keypair (a different anonId)
+ *     that cannot be restored from the written recovery phrase alone.
+ *
+ * A domain-separation tag then derives the curve seed. Feed the result to the
+ * Noise curve's generateSeedKeyPair().
  */
-export function mnemonicToSeed32(phrase) {
-  const bip39Seed = mnemonicToSeedSync(normalizeMnemonic(phrase), 'text-me-secretly');
+export function mnemonicToSeed32(phrase, userPassphrase = '') {
+  const bip39Passphrase = 'text-me-secretly' + (userPassphrase || '');
+  const bip39Seed = mnemonicToSeedSync(normalizeMnemonic(phrase), bip39Passphrase);
   return sha256(concat(new Uint8Array(bip39Seed), enc.encode('tms-x25519-identity')));
 }

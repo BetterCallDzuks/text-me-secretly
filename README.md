@@ -156,23 +156,34 @@ account server:
 - **Private key = recovery phrase (login/backup).** On first run the app mints a
   **12-word BIP39 mnemonic** (via the audited `@scure/bip39`) and derives the
   X25519 static keypair deterministically from it:
-  `mnemonic → BIP39 seed → SHA-256(domain-tagged) → curve.generateSeedKeyPair`.
+  `mnemonic (+ passphrase) → BIP39 seed → SHA-256(domain-tagged) → curve.generateSeedKeyPair`.
   Entering the same phrase on any device restores the same keypair and the same
-  anonId — that's login. Only the mnemonic is persisted locally; the keypair is
-  re-derived on launch.
+  anonId — that's login. The derived keypair is persisted locally, so normal
+  launches never prompt for the passphrase.
+- **Optional passphrase (second factor).** A BIP39 "25th word": with a passphrase
+  set, the written phrase *alone* can't restore the account. It is **never
+  stored**, and because it changes the derived keypair it changes the anonId —
+  so setting/removing it is switching to a different address (the UI says so).
+  An empty passphrase reproduces the original derivation, so existing identities
+  are unchanged.
+- **Safety number.** The anonId *is* the identity-key fingerprint, so the chat
+  header shows a **🔒 verified** bar; tapping it reveals both peers' safety
+  numbers (grouped for reading aloud). If both devices show the same pair,
+  there's no one in the middle.
 - **UI:** the 🔑 account panel shows the shareable ID, reveals the recovery
-  phrase for backup (with a "never share this" warning), and accepts a phrase to
-  restore/log in (which re-registers signaling under the restored id). A
-  first-run prompt nudges the user to save the phrase.
-- **Tested:** a phrase deterministically yields the same anonId; different
-  phrases yield different ids; case/whitespace is normalised; and mnemonic-
-  derived identities complete a real Noise XX handshake.
+  phrase for backup (with a "never share this" warning), lets you add/remove a
+  passphrase, and accepts a phrase (+ optional passphrase) to restore/log in
+  (re-registering signaling under the restored id). A first-run prompt nudges
+  the user to save the phrase.
+- **Tested:** a phrase deterministically yields the same anonId; a passphrase
+  changes it deterministically and restores exactly; an empty passphrase equals
+  the passphrase-less derivation; the keypair persists and reloads without the
+  passphrase; and mnemonic-derived identities complete a real Noise XX handshake.
 
-> Security note: the recovery phrase is now the master secret. Anyone who learns
-> it can restore the account and read that account's *future* messages (past
-> messages are protected by Noise's forward secrecy). This is the standard
-> mnemonic-wallet trade-off — surface it clearly in the UI (done) and consider
-> an optional user passphrase on top of the mnemonic for a launch build.
+> Security note: the recovery phrase (plus passphrase, if set) is the master
+> secret. Whoever holds it can restore the account and read its *future* messages
+> (past messages stay protected by Noise's forward secrecy) — the standard
+> mnemonic-wallet trade-off, surfaced in the UI.
 
 ---
 
@@ -418,8 +429,10 @@ Implemented:
 - **RS256 offline token verification** (§1): peers verify subscription proofs
   with the server's public key, no round-trip.
 - **TURN with ephemeral credentials** (§1c) for symmetric-NAT fallback.
-- **Recoverable identity** (§1b′): BIP39 recovery phrase → deterministic X25519
-  keypair; public-key fingerprint is the shareable anonId.
+- **Recoverable identity** (§1b′): BIP39 recovery phrase (+ optional passphrase)
+  → deterministic X25519 keypair; public-key fingerprint is the shareable anonId.
+- **Safety-number verification** (§1b′): the chat header shows a verified bar
+  revealing both peers' identity-key fingerprints for out-of-band comparison.
 
 Still required before a real launch:
 
@@ -427,10 +440,6 @@ Still required before a real launch:
   production-grade (powers Keet), but the in-browser primitive is
   `sodium-javascript` (a pure-JS port). Swap in the official libsodium WASM
   backend, and get the full integration reviewed.
-- Show the peer's anonId (the static-key fingerprint / **safety number**) in the
-  chat header for out-of-band verification.
-- Consider an **optional user passphrase** layered on the recovery phrase (the
-  phrase is now the master secret; a passphrase adds a second factor).
 - **Pin the signing key** (`EXPECTED_JWT_KID`) and plan RSA key rotation.
 - The VPN check deters, but cannot cryptographically prove, a VPN on a
   compromised device.

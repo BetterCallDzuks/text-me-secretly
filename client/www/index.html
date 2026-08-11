@@ -51,7 +51,10 @@
         </div>
 
         <div class="acct-block">
-          <div class="acct-label">Recovery phrase — your login. Keep it secret.</div>
+          <div class="acct-label">
+            Recovery phrase — your login. Keep it secret.
+            <span id="acct-passphrase-state" class="acct-pill hidden"></span>
+          </div>
           <div id="acct-phrase" class="phrase phrase--hidden mono">
             tap “Reveal” to show your 12-word recovery phrase
           </div>
@@ -65,6 +68,23 @@
           </div>
         </div>
 
+        <details class="acct-block acct-details">
+          <summary>Protect with a passphrase (optional)</summary>
+          <p class="acct-hint">
+            A passphrase is a second factor: with it set, your written phrase
+            alone can’t restore your account. It <strong>changes your ID</strong>
+            (it’s a different address), so share your new ID afterwards.
+          </p>
+          <input
+            id="acct-set-pass"
+            class="input"
+            type="password"
+            placeholder="new passphrase (leave empty to remove)"
+            autocomplete="new-password"
+          />
+          <button id="acct-apply-pass" class="btn btn--primary">Apply passphrase</button>
+        </details>
+
         <div class="acct-block">
           <div class="acct-label">Restore / log in with a recovery phrase</div>
           <textarea
@@ -74,6 +94,13 @@
             autocomplete="off"
             spellcheck="false"
           ></textarea>
+          <input
+            id="acct-restore-pass"
+            class="input"
+            type="password"
+            placeholder="passphrase (only if the account has one)"
+            autocomplete="off"
+          />
           <button id="acct-restore" class="btn btn--primary">Restore</button>
           <div id="acct-msg" class="status"></div>
         </div>
@@ -116,6 +143,20 @@
         <div class="chat__meta">
           <span>Chat with <span id="peer-label" class="mono">—</span></span>
           <span id="quota" class="quota">0 / 20</span>
+        </div>
+        <button id="safety-bar" class="safety-bar" title="Tap to verify">
+          <span class="safety-bar__badge">🔒 verified</span>
+          <span class="safety-bar__hint">Tap to compare safety numbers</span>
+        </button>
+        <div id="safety-detail" class="safety-detail hidden">
+          <div class="safety-detail__label">Their safety number (read aloud to compare)</div>
+          <div id="safety-their" class="mono safety-num">—</div>
+          <div class="safety-detail__label">Your safety number</div>
+          <div id="safety-mine" class="mono safety-num">—</div>
+          <div class="safety-detail__note">
+            If both people see the same two numbers on each device, no one is in
+            the middle. These are your identity keys' fingerprints.
+          </div>
         </div>
         <div id="messages" class="messages"></div>
 
