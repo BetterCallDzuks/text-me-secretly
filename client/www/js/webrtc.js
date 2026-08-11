@@ -2,22 +2,23 @@
 // reliable RTCDataChannel. All chat traffic (text + chunked media) rides this
 // channel and NEVER touches the server after the handshake completes.
 
+// Default STUN-only config. The app normally fetches a fuller list (STUN +
+// ephemeral TURN) from the server and passes it via the `iceServers` option so
+// connections still succeed behind symmetric NAT. TURN only ever relays the
+// already-E2EE-encrypted media, so a relay operator learns nothing.
 const RTC_CONFIG = {
-  iceServers: [
-    // Public STUN for NAT traversal. Add a TURN server for symmetric-NAT
-    // fallback in production (still relays only opaque encrypted media, but
-    // most privacy setups run their own TURN).
-    { urls: 'stun:stun.l.google.com:19302' },
-  ],
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 };
 
 export class PeerConnection extends EventTarget {
-  constructor(signaling, peerId, { initiator }) {
+  constructor(signaling, peerId, { initiator, iceServers }) {
     super();
     this.signaling = signaling;
     this.peerId = peerId;
     this.initiator = initiator;
-    this.pc = new RTCPeerConnection(RTC_CONFIG);
+    this.pc = new RTCPeerConnection(
+      iceServers && iceServers.length ? { iceServers } : RTC_CONFIG
+    );
     this.channel = null;
 
     this.pc.addEventListener('icecandidate', (ev) => {

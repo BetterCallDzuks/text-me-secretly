@@ -16,6 +16,7 @@ const rateLimit = require('express-rate-limit');
 const config = require('./src/config');
 const payment = require('./src/payment');
 const subscription = require('./src/subscription');
+const turn = require('./src/turn');
 const { attachSignaling } = require('./src/signaling');
 
 const app = express();
@@ -78,9 +79,17 @@ app.post('/api/token', apiLimiter, (req, res) => {
   res.json({ token, expiresAt });
 });
 
-// --- Verify a peer's token (used by the RECEIVER in the HS256 demo) --------
-// In an RS256 hardened build the receiver verifies locally with the public key
-// and this endpoint is unnecessary. See README "Hardening".
+// --- Public signing key: clients verify peer tokens OFFLINE with this -------
+// Served as a JWK so the browser can import it via SubtleCrypto. The private
+// key never leaves the server.
+app.get('/api/pubkey', (req, res) => {
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.json({ alg: 'RS256', kid: config.jwtKid, jwk: config.jwtPublicJwk });
+});
+
+// --- Verify a peer's token (FALLBACK) --------------------------------------
+// The client's default is offline verification with /api/pubkey. This endpoint
+// stays for clients that cannot import the key, and for diagnostics.
 app.post('/api/verify', apiLimiter, (req, res) => {
   const { token, expectAnonId } = req.body || {};
   if (typeof token !== 'string') {
@@ -88,6 +97,16 @@ app.post('/api/verify', apiLimiter, (req, res) => {
   }
   const result = subscription.verifyToken(token, expectAnonId);
   res.status(result.valid ? 200 : 401).json(result);
+});
+
+// --- ICE servers (STUN + ephemeral TURN credentials) -----------------------
+// Called by the client just before opening a peer connection so TURN can relay
+// when direct P2P fails behind symmetric NAT. TURN only ever carries encrypted
+// media.
+app.post('/api/turn', apiLimiter, (req, res) => {
+  const anonId = req.body && req.body.anonId;
+  const safeId = typeof anonId === 'string' && ANON_ID_RE.test(anonId) ? anonId : undefined;
+  res.json(turn.iceServers(safeId));
 });
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
