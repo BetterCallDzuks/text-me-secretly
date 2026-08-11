@@ -192,8 +192,13 @@ function wirePeer() {
   state.peer.addEventListener('channelopen', async () => {
     // Run the E2EE handshake BEFORE any messaging. Chat opens only once the
     // channel is authenticated and keyed.
-    ui.connStatus.textContent = 'Securing channel (E2EE handshake)…';
-    state.session = new E2EESession(state.peer, state.identity, state.peerId);
+    ui.connStatus.textContent = 'Securing channel (Noise XX handshake)…';
+    state.session = new E2EESession(
+      state.peer,
+      state.identity,
+      state.peerId,
+      state.peer.initiator
+    );
     state.session.addEventListener('established', () => {
       state.messaging = new Messaging(state.session, state.myId, state.peerId);
       wireMessaging();
