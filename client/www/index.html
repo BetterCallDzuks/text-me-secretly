@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Text Me Secretly</title>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <!-- VPN GATE: covers everything until a VPN is confirmed. -->
+    <div id="vpn-gate" class="overlay overlay--block">
+      <div class="overlay__card">
+        <div class="overlay__icon">🔒</div>
+        <h1>VPN Required</h1>
+        <p id="vpn-gate-msg">Checking your connection…</p>
+        <button id="vpn-recheck" class="btn btn--ghost hidden">Re-check</button>
+      </div>
+    </div>
+
+    <!-- PAYWALL: shown when a contact passes the free-message limit. -->
+    <div id="paywall" class="overlay hidden">
+      <div class="overlay__card">
+        <div class="overlay__icon">✨</div>
+        <h1>Keep chatting</h1>
+        <p id="paywall-msg">
+          You've used your 20 free messages with this contact. Subscribe to
+          continue.
+        </p>
+        <button id="paywall-subscribe" class="btn btn--primary">
+          Subscribe · €5/mo
+        </button>
+        <button id="paywall-close" class="btn btn--ghost">Not now</button>
+      </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="app" class="app hidden">
+      <header class="app__header">
+        <div>
+          <div class="app__title">Text Me Secretly</div>
+          <div class="app__id">
+            Your ID: <span id="my-id" class="mono">—</span>
+          </div>
+        </div>
+        <div id="vpn-badge" class="badge badge--ok">VPN</div>
+      </header>
+
+      <section id="connect-panel" class="panel">
+        <label for="peer-id">Connect to a contact ID</label>
+        <div class="row">
+          <input
+            id="peer-id"
+            class="input mono"
+            placeholder="their-anon-id"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button id="connect-btn" class="btn btn--primary">Connect</button>
+        </div>
+        <div id="conn-status" class="status">Disconnected</div>
+      </section>
+
+      <section id="chat" class="chat hidden">
+        <div class="chat__meta">
+          <span>Chat with <span id="peer-label" class="mono">—</span></span>
+          <span id="quota" class="quota">0 / 20</span>
+        </div>
+        <div id="messages" class="messages"></div>
+
+        <div class="composer">
+          <button id="attach-btn" class="btn btn--icon" title="Send view-once media">
+            📎
+          </button>
+          <input
+            id="msg-input"
+            class="input"
+            placeholder="Message (auto-deletes in 12h)…"
+            autocomplete="off"
+          />
+          <button id="send-btn" class="btn btn--primary">Send</button>
+        </div>
+        <input id="file-input" type="file" accept="image/*,video/*,audio/*" class="hidden" />
+      </section>
+    </div>
+
+    <!-- Capacitor injects its runtime; app code is plain ES modules. -->
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
