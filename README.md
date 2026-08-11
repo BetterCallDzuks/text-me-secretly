@@ -5,13 +5,14 @@ between two devices** over a WebRTC data channel. The backend is deliberately
 tiny: it brokers the initial handshake and sells subscriptions — it **never
 stores, processes, or relays a single message or media byte**.
 
-- **Identity:** anonymous **and self-certifying**. Each device generates a
-  long-term ECDH identity keypair on first run; the anonId is the key's
-  fingerprint (`base32(sha256(spki))[:20]`). No emails, no accounts, no
-  server-side user table.
-- **End-to-end encrypted:** every message and media chunk is sealed with
-  AES-256-GCM under keys from an authenticated ECDH handshake (forward secrecy),
-  on top of WebRTC's transport encryption.
+- **Identity:** anonymous, **self-certifying, and recoverable**. The identity
+  keypair (Noise X25519 static key) is derived deterministically from a **BIP39
+  recovery phrase** — the phrase is your login/backup, and its **public-key
+  fingerprint** (`base32(sha256(pub))[:20]`) is the anonId you share so people
+  can add you. No emails, no accounts, no server-side user table.
+- **End-to-end encrypted:** an audited **Noise XX** handshake
+  (`Noise_XX_25519_ChaChaPoly_BLAKE2b`) authenticates both peers and seals every
+  message and media chunk, on top of WebRTC's transport encryption.
 - **Ephemeral:** text has a 12-hour local TTL and auto-deletes; media is
   **view-once** (rendered exactly once, then the bytes are burned).
 - **Freemium:** 20 free messages **per new contact**, then a €5/month
@@ -98,32 +99,80 @@ cannot obtain the key (e.g. first run while offline).
 
 ---
 
-## 1b. End-to-end encryption (`client/www/js/e2ee.js`)
+## 1b. End-to-end encryption — Noise XX (`client/www/js/e2ee.js`)
 
 WebRTC encrypts the data channel in transit (DTLS), but that terminates inside
-each device's WebRTC stack. On top of it we run an application-level E2EE layer:
+each device's WebRTC stack. On top of it we run application-level E2EE using the
+**Noise Protocol Framework's XX pattern**, implemented by the audited
+[`noise-handshake`](https://github.com/holepunchto/noise-handshake) library
+(Holepunch — the same Noise implementation that powers the **Keet** P2P
+messenger). Suite:
 
-- **Authenticated handshake:** on channel open, both peers exchange their
-  long-term identity public key + a fresh **ephemeral** ECDH key. Each peer
-  checks `fingerprint(peer identity key) === peerId` — because the anonId *is*
-  that fingerprint, a signaling-server MITM that swaps keys is detected and the
-  connection is dropped.
-- **Key agreement:** the session key mixes two ECDH secrets —
-  `ss_static = ECDH(myIdentity, peerIdentity)` (mutual authentication) and
-  `ss_eph = ECDH(myEphemeral, peerEphemeral)` (**forward secrecy**) — through
-  HKDF-SHA256. Separate send/receive keys are derived per direction (ordered by
-  anonId) so each direction has its own AES-GCM key.
-- **AEAD:** every frame and media chunk is sealed with **AES-256-GCM**, fresh
-  random 96-bit IV each, a 1-byte type tag distinguishing JSON frames from media
-  chunks. Incoming messages are processed through a serial queue so async
-  decryption preserves channel order.
-- **Tested:** two simulated peers establish, exchange encrypted text and media
-  both ways, and an identity-mismatch (MITM) attempt is rejected.
+```
+Noise_XX_25519_ChaChaPoly_BLAKE2b
+```
 
-Curve choice: P-256 (universally supported in mobile WebViews). X25519 is a
-drop-in where the WebView supports it — change the `namedCurve`/algorithm in
-`crypto.js`. This is a pragmatic, readable handshake, **not** a formally verified
-protocol; for launch, adopt an audited Noise (XX) or Signal-protocol library.
+- **Why XX:** it is the mutual-authentication pattern for peers who *don't* know
+  each other's static key in advance — exactly our case (anonymous peers who only
+  exchanged an anonId). Both static keys are transmitted and cryptographically
+  authenticated during the 3-message handshake, and XX's ephemeral keys give
+  **forward secrecy**.
+- **Identity binding (our layer):** the identity keypair is now the Noise
+  **static** key (X25519), and the anonId is its fingerprint
+  (`base32(sha256(pub))[:20]`). After the handshake each side checks that the
+  peer's learned static key (`hs.rs`) fingerprints to the anonId it dialed — so a
+  signaling-server MITM that swaps keys is detected and the connection dropped.
+- **Transport:** after the handshake, `noise-handshake` provides the split
+  cipher states; every frame and media chunk is sealed with ChaCha20-Poly1305
+  (nonces + rekeying managed by the library). A 1-byte outer prefix marks
+  handshake vs transport messages; a 1-byte inner tag marks JSON frame vs media
+  chunk.
+- **Tested:** two peers complete the XX handshake, exchange encrypted text and
+  media both ways, a tampered ciphertext is rejected by Poly1305, and an
+  identity-mismatch (MITM) attempt is rejected.
+
+**Build note:** the vendored crypto libraries are the *only* part of the client
+with a build step. `npm run build:vendor` bundles `client/build/*.mjs` (via
+esbuild) into two committed, self-contained ES modules under
+`client/www/js/vendor/` (`noise-xx.js`, `mnemonic.js`), so the app still loads
+buildless. Everything else stays vanilla JS.
+
+**In-browser primitive:** the Noise bundle uses `sodium-javascript` (a pure-JS
+port of libsodium) for the WebView. The Noise *protocol* implementation is
+production-grade; the further hardening step is to back it with the official
+audited **libsodium WASM** build.
+
+---
+
+## 1b′. Identity & recovery phrase (`client/www/js/identity.js`)
+
+The identity is wallet-style — a keypair you can back up and restore, with no
+account server:
+
+- **Public key = contact address.** Its fingerprint is the anonId
+  (`base32(sha256(pub))[:20]`); you share it so people can add you. It is also
+  the Noise static-key fingerprint used for the MITM check above, so the anonId
+  doubles as a **safety number** for out-of-band verification.
+- **Private key = recovery phrase (login/backup).** On first run the app mints a
+  **12-word BIP39 mnemonic** (via the audited `@scure/bip39`) and derives the
+  X25519 static keypair deterministically from it:
+  `mnemonic → BIP39 seed → SHA-256(domain-tagged) → curve.generateSeedKeyPair`.
+  Entering the same phrase on any device restores the same keypair and the same
+  anonId — that's login. Only the mnemonic is persisted locally; the keypair is
+  re-derived on launch.
+- **UI:** the 🔑 account panel shows the shareable ID, reveals the recovery
+  phrase for backup (with a "never share this" warning), and accepts a phrase to
+  restore/log in (which re-registers signaling under the restored id). A
+  first-run prompt nudges the user to save the phrase.
+- **Tested:** a phrase deterministically yields the same anonId; different
+  phrases yield different ids; case/whitespace is normalised; and mnemonic-
+  derived identities complete a real Noise XX handshake.
+
+> Security note: the recovery phrase is now the master secret. Anyone who learns
+> it can restore the account and read that account's *future* messages (past
+> messages are protected by Noise's forward secrecy). This is the standard
+> mnemonic-wallet trade-off — surface it clearly in the UI (done) and consider
+> an optional user passphrase on top of the mnemonic for a launch build.
 
 ---
 
@@ -212,17 +261,23 @@ text-me-secretly/
 │       └── ios/Plugin/           # Swift plugin + ObjC registration
 │
 └── client/                       # Vanilla JS app, wrapped by Capacitor
-    ├── package.json
+    ├── package.json              # + build:vendor scripts (esbuild) & crypto dev deps
     ├── capacitor.config.json
+    ├── build/                    # bundle entries (the only client build step)
+    │   ├── noise-entry.mjs       # re-exports Noise XX
+    │   └── mnemonic-entry.mjs    # re-exports BIP39 mnemonic helpers
     └── www/
         ├── index.html
         ├── css/style.css
         └── js/
             ├── config.js         # signaling + API endpoints + key-pin (edit for your VPS)
-            ├── app.js            # bootstrap + UI wiring + VPN gate + E2EE handshake
-            ├── identity.js       # self-certifying identity keypair + anonId fingerprint
-            ├── crypto.js         # Web Crypto: ECDH, HKDF, AES-GCM, RS256 verify
-            ├── e2ee.js           # authenticated E2EE handshake + session cipher
+            ├── app.js            # bootstrap + UI + VPN gate + Noise handshake + account panel
+            ├── identity.js       # mnemonic-derived X25519 keypair; backup/restore
+            ├── crypto.js         # Web Crypto: base32/sha256, fingerprint, RS256 verify
+            ├── e2ee.js           # drives the Noise XX handshake + transport framing
+            ├── vendor/
+            │   ├── noise-xx.js   # GENERATED: noise-handshake + sodium-javascript
+            │   └── mnemonic.js   # GENERATED: @scure/bip39 + @noble/hashes
             ├── storage.js        # Preferences/localStorage KV (no message bodies)
             ├── signaling.js      # WebSocket signaling client
             ├── webrtc.js         # RTCPeerConnection + data channel (STUN/TURN)
@@ -273,9 +328,9 @@ run a TURN server (see `docs/coturn.md`); otherwise it serves STUN-only.
 
 See `client/www/js/`. Highlights:
 
-- **`crypto.js` / `e2ee.js`** — the E2EE layer (see §1b): authenticated ECDH
-  handshake, HKDF, per-direction AES-256-GCM. Chat opens only after the
-  handshake verifies the peer's identity.
+- **`e2ee.js` / `vendor/noise-xx.js`** — the E2EE layer (see §1b): drives the
+  audited **Noise XX** handshake and seals every frame with ChaCha20-Poly1305.
+  Chat opens only after the handshake verifies the peer's identity.
 - **`webrtc.js`** — one ordered/reliable `RTCDataChannel` named `tms`. ICE
   servers (STUN + ephemeral TURN) are fetched from the backend at session start.
 - **`messaging.js`** — runs over the encrypted transport: JSON frames for
@@ -316,6 +371,13 @@ npx cap open android     # build/run from Android Studio / Xcode
 The `vpn-detector` plugin is linked via `"vpn-detector": "file:../plugins/vpn-detector"`
 and picked up automatically by `cap sync`.
 
+The vendored crypto bundles (`www/js/vendor/*.js`) are committed, so the app
+runs without a build step. To regenerate them after bumping a pinned library:
+
+```bash
+cd client && npm install && npm run build:vendor
+```
+
 ---
 
 ## 6. Deployment (PM2 on Ubuntu, no Docker)
@@ -348,20 +410,27 @@ location / {
 
 ## Security & privacy notes (read before shipping)
 
-Implemented in this branch:
+Implemented:
 
-- **Application-level E2EE** over the data channel (§1b): authenticated ECDH
-  handshake with forward secrecy, identity keys pinned to anonIds, AES-256-GCM.
+- **Application-level E2EE via Noise XX** (§1b): the audited `noise-handshake`
+  library (`Noise_XX_25519_ChaChaPoly_BLAKE2b`), with static keys bound to
+  anonIds so a key-swap MITM is detected. Forward secrecy from XX ephemerals.
 - **RS256 offline token verification** (§1): peers verify subscription proofs
   with the server's public key, no round-trip.
 - **TURN with ephemeral credentials** (§1c) for symmetric-NAT fallback.
+- **Recoverable identity** (§1b′): BIP39 recovery phrase → deterministic X25519
+  keypair; public-key fingerprint is the shareable anonId.
 
 Still required before a real launch:
 
-- **Get the crypto audited.** The handshake in `e2ee.js` is pragmatic and
-  readable, not formally verified. Adopt an audited Noise (XX) or Signal-protocol
-  implementation, and add a user-visible **safety-number** comparison flow.
-- Consider **X25519** in place of P-256 where the WebView supports it.
+- **Back Noise with the audited libsodium WASM.** The Noise *protocol* impl is
+  production-grade (powers Keet), but the in-browser primitive is
+  `sodium-javascript` (a pure-JS port). Swap in the official libsodium WASM
+  backend, and get the full integration reviewed.
+- Show the peer's anonId (the static-key fingerprint / **safety number**) in the
+  chat header for out-of-band verification.
+- Consider an **optional user passphrase** layered on the recovery phrase (the
+  phrase is now the master secret; a passphrase adds a second factor).
 - **Pin the signing key** (`EXPECTED_JWT_KID`) and plan RSA key rotation.
 - The VPN check deters, but cannot cryptographically prove, a VPN on a
   compromised device.
