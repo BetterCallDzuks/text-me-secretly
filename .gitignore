@@ -7,6 +7,10 @@ node_modules/
 server/.env
 *.local
 
+# RSA signing keys — generated at runtime, NEVER commit
+server/keys/
+*.pem
+
 # Build output
 dist/
 plugins/vpn-detector/dist/

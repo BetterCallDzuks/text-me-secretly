@@ -16,9 +16,15 @@
 // per-contact free tier still applies to the OTHER party until they subscribe).
 
 import { store } from './storage.js';
+import { CONFIG } from './config.js';
+import { importRs256VerifyKey, verifyJwtRs256 } from './crypto.js';
 
 const COUNT_KEY = 'tms.counts'; // { [contactId]: number }
 const TOKEN_KEY = 'tms.subToken'; // { token, expiresAt }
+const PUBKEY_KEY = 'tms.pubjwk'; // cached server signing key (JWK)
+
+const JWT_ISSUER = 'text-me-secretly';
+const JWT_AUDIENCE = 'tms-peers';
 
 let serverConfig = { freeMessagesPerContact: 20, priceCents: 500, currency: 'EUR' };
 
@@ -80,6 +86,54 @@ export function setApiBase(base) {
   apiBase = base.replace(/\/$/, '');
 }
 
+// ---- Server public key (for OFFLINE token verification) --------------------
+
+let verifyKeyPromise = null;
+
+/**
+ * Fetch (and cache) the server's RSA public JWK, then import it as a
+ * non-extractable verify key. Cached in storage so verification keeps working
+ * offline after the first successful fetch.
+ *
+ * For production you can PIN the key by shipping the expected `kid` in config
+ * and rejecting a mismatch here.
+ */
+async function getVerifyKey() {
+  if (verifyKeyPromise) return verifyKeyPromise;
+  verifyKeyPromise = (async () => {
+    let jwk = null;
+    try {
+      const res = await fetch(`${apiBase}/api/pubkey`);
+      if (res.ok) {
+        const data = await res.json();
+        jwk = data.jwk;
+        await store.set(PUBKEY_KEY, jwk);
+      }
+    } catch {
+      /* fall through to cached copy */
+    }
+    if (!jwk) jwk = await store.get(PUBKEY_KEY);
+    if (!jwk) return null;
+
+    // Optional key pinning: reject a public key whose kid isn't the expected
+    // one (defends against a swapped signing key).
+    if (CONFIG.EXPECTED_JWT_KID && jwk.kid !== CONFIG.EXPECTED_JWT_KID) {
+      return null;
+    }
+    return importRs256VerifyKey(jwk);
+  })();
+  return verifyKeyPromise;
+}
+
+/** Warm the public key cache at startup (best-effort). */
+export async function preloadVerifyKey() {
+  try {
+    await getVerifyKey();
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Kick off the (mocked) purchase and cache the returned proof token. */
 export async function subscribe(anonId) {
   const res = await fetch(`${apiBase}/api/subscribe`, {
@@ -94,12 +148,32 @@ export async function subscribe(anonId) {
 }
 
 /**
- * Verify a peer's presented token. In the HS256 demo the receiver cannot hold
- * the secret, so it asks the server. (A hardened RS256 build verifies locally.)
- * Returns true if the token is valid AND belongs to `expectAnonId`.
+ * Verify a peer's presented subscription token.
+ *
+ * Primary path: OFFLINE RS256 verification with the server's public key — no
+ * network call, no metadata leak. The token's `sub` must equal the peer's
+ * anonId so a token can't be reused by a different peer.
+ *
+ * Fallback path: if the public key can't be obtained (e.g. first run while
+ * offline), POST to /api/verify. Returns true only if the token is valid.
  */
 export async function verifyPeerToken(token, expectAnonId) {
   if (!token) return false;
+
+  const key = await getVerifyKey();
+  if (key) {
+    const claims = await verifyJwtRs256(token, key, {
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE,
+      expectSub: expectAnonId,
+    });
+    if (claims && claims.scope === 'subscription') return true;
+    // A well-formed key that rejects the token is authoritative — don't fall
+    // back to the server (which would only reach the same verdict).
+    return false;
+  }
+
+  // No key available: fall back to the server verify endpoint.
   try {
     const res = await fetch(`${apiBase}/api/verify`, {
       method: 'POST',

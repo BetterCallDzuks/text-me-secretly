@@ -8,10 +8,11 @@
 //   4. Run the freemium-gated messaging protocol.
 
 import { CONFIG } from './config.js';
-import { getMyId } from './identity.js';
+import { getIdentity } from './identity.js';
 import { vpnGate } from './vpn.js';
 import { Signaling } from './signaling.js';
 import { PeerConnection } from './webrtc.js';
+import { E2EESession } from './e2ee.js';
 import { Messaging } from './messaging.js';
 import { purgeAll } from './ephemeral.js';
 import {
@@ -20,6 +21,7 @@ import {
   subscribe,
   freeLimit,
   getCount,
+  preloadVerifyKey,
 } from './subscription.js';
 
 const $ = (id) => document.getElementById(id);
@@ -49,10 +51,13 @@ const ui = {
 };
 
 const state = {
+  identity: null,
   myId: null,
   vpnActive: false,
   signaling: null,
+  iceServers: null,
   peer: null,
+  session: null,
   messaging: null,
   peerId: null,
 };
@@ -71,7 +76,9 @@ function lockForVpn() {
   // Sever everything the moment the tunnel is gone.
   purgeAll();
   if (state.signaling) state.signaling.disconnect();
+  if (state.session) state.session.destroy();
   if (state.peer) state.peer.close();
+  state.session = null;
   state.peer = null;
   state.messaging = null;
 }
@@ -106,6 +113,10 @@ async function startSession() {
   }
   ui.paywallMsg.textContent = `You've used your ${freeLimit()} free messages with this contact. Subscribe to continue.`;
 
+  // Warm the offline token-verification key and fetch ICE servers (STUN+TURN).
+  preloadVerifyKey();
+  state.iceServers = await fetchIceServers();
+
   state.signaling = new Signaling(CONFIG.SIGNALING_URL);
   state.signaling.addEventListener('open', () => {
     ui.connStatus.textContent = 'Signaling connected. Enter a contact ID.';
@@ -139,9 +150,27 @@ async function handleSignal(msg) {
 
 // --- Peer connection --------------------------------------------------------
 
+/** Fetch STUN + ephemeral TURN servers from the backend (best-effort). */
+async function fetchIceServers() {
+  try {
+    const res = await fetch(`${CONFIG.API_BASE}/api/turn`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ anonId: state.myId }),
+    });
+    if (res.ok) return (await res.json()).iceServers;
+  } catch {
+    /* fall back to the client's built-in STUN default */
+  }
+  return null;
+}
+
 async function dial(peerId) {
   state.peerId = peerId;
-  state.peer = new PeerConnection(state.signaling, peerId, { initiator: true });
+  state.peer = new PeerConnection(state.signaling, peerId, {
+    initiator: true,
+    iceServers: state.iceServers,
+  });
   wirePeer();
   await state.peer.start();
   ui.connStatus.textContent = `Calling ${peerId}…`;
@@ -150,7 +179,10 @@ async function dial(peerId) {
 async function acceptIncomingCall(peerId, sdp) {
   state.peerId = peerId;
   ui.peerId.value = peerId;
-  state.peer = new PeerConnection(state.signaling, peerId, { initiator: false });
+  state.peer = new PeerConnection(state.signaling, peerId, {
+    initiator: false,
+    iceServers: state.iceServers,
+  });
   wirePeer();
   await state.peer.onOffer(sdp);
   ui.connStatus.textContent = `Incoming from ${peerId}…`;
@@ -158,9 +190,19 @@ async function acceptIncomingCall(peerId, sdp) {
 
 function wirePeer() {
   state.peer.addEventListener('channelopen', async () => {
-    state.messaging = new Messaging(state.peer, state.myId, state.peerId);
-    wireMessaging();
-    openChatUI();
+    // Run the E2EE handshake BEFORE any messaging. Chat opens only once the
+    // channel is authenticated and keyed.
+    ui.connStatus.textContent = 'Securing channel (E2EE handshake)…';
+    state.session = new E2EESession(state.peer, state.identity, state.peerId);
+    state.session.addEventListener('established', () => {
+      state.messaging = new Messaging(state.session, state.myId, state.peerId);
+      wireMessaging();
+      openChatUI();
+    });
+    state.session.addEventListener('insecure', (ev) => {
+      teardownPeer(`⚠ Handshake failed (${ev.detail.reason}) — possible MITM. Disconnected.`);
+    });
+    await state.session.start();
   });
   state.peer.addEventListener('channelclose', () => teardownPeer('Channel closed.'));
   state.peer.addEventListener('state', (ev) => {
@@ -171,7 +213,9 @@ function wirePeer() {
 }
 
 function teardownPeer(reason) {
+  if (state.session) state.session.destroy();
   if (state.peer) state.peer.close();
+  state.session = null;
   state.peer = null;
   state.messaging = null;
   ui.chat.classList.add('hidden');
@@ -183,9 +227,11 @@ function teardownPeer(reason) {
 async function openChatUI() {
   ui.chat.classList.remove('hidden');
   ui.peerLabel.textContent = state.peerId;
-  ui.connStatus.textContent = 'Connected (P2P). Messages flow device-to-device.';
+  ui.connStatus.textContent = 'Connected (P2P · end-to-end encrypted).';
   await refreshQuota();
-  systemBubble('Connected. Text auto-deletes after 12h; media is view-once.');
+  systemBubble(
+    '🔒 End-to-end encrypted & identity-verified. Text auto-deletes after 12h; media is view-once.'
+  );
 }
 
 function wireMessaging() {
@@ -380,7 +426,8 @@ ui.gateRecheck.addEventListener('click', async () => {
 
 (async function boot() {
   setApiBase(CONFIG.API_BASE);
-  state.myId = await getMyId();
+  state.identity = await getIdentity();
+  state.myId = state.identity.id;
 
   vpnGate.onChange((active) => {
     state.vpnActive = active;

@@ -1,34 +1,58 @@
-// identity.js — anonymous, persistent, local-only identity.
+// identity.js — anonymous, persistent, local-only, self-certifying identity.
 //
-// The app has NO account system. On first run it mints a random alphanumeric ID
-// and stores it locally. That ID is the only thing a peer needs to reach you.
+// The app has NO account system. On first run it generates a long-term ECDH
+// identity keypair and derives the anonId as a FINGERPRINT of the identity
+// public key (base32(sha256(spki))[:20]).
+//
+// Why the id is a key fingerprint: it makes identities self-certifying. During
+// the E2EE handshake each peer proves it holds the private key matching the
+// fingerprint the other side dialed, so the signaling server cannot
+// man-in-the-middle by swapping keys — doing so would change the id the user
+// shared out-of-band. The id is still fully anonymous (no PII, no server
+// record).
 
 import { store } from './storage.js';
+import {
+  generateEcdhKeypair,
+  exportEcdhKeypairJwks,
+  importEcdhPrivateJwk,
+  importEcdhPublicJwk,
+  fingerprintOfPublicKey,
+} from './crypto.js';
 
-const ID_KEY = 'tms.anonId';
-const ID_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-const ID_LEN = 20;
+const IDENTITY_KEY = 'tms.identity'; // { id, priv: jwk, pub: jwk }
 
-function randomId() {
-  const bytes = new Uint8Array(ID_LEN);
-  crypto.getRandomValues(bytes);
-  let out = '';
-  for (let i = 0; i < ID_LEN; i++) {
-    out += ID_ALPHABET[bytes[i] % ID_ALPHABET.length];
-  }
-  return out;
+let cached = null; // { id, keypair: {privateKey, publicKey}, pubJwk }
+
+async function createIdentity() {
+  const keypair = await generateEcdhKeypair(true);
+  const id = await fingerprintOfPublicKey(keypair.publicKey);
+  const jwks = await exportEcdhKeypairJwks(keypair);
+  await store.set(IDENTITY_KEY, { id, priv: jwks.priv, pub: jwks.pub });
+  return { id, keypair, pubJwk: jwks.pub };
 }
 
-let cached = null;
-
-/** Return the device's anon ID, creating and persisting one on first call. */
-export async function getMyId() {
+async function loadIdentity() {
   if (cached) return cached;
-  let id = await store.get(ID_KEY);
-  if (!id || !/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
-    id = randomId();
-    await store.set(ID_KEY, id);
+
+  const saved = await store.get(IDENTITY_KEY);
+  if (saved && saved.priv && saved.pub && saved.id) {
+    const privateKey = await importEcdhPrivateJwk(saved.priv);
+    const publicKey = await importEcdhPublicJwk(saved.pub);
+    cached = { id: saved.id, keypair: { privateKey, publicKey }, pubJwk: saved.pub };
+    return cached;
   }
-  cached = id;
-  return id;
+
+  cached = await createIdentity();
+  return cached;
+}
+
+/** Return the device's anon ID (the identity key fingerprint). */
+export async function getMyId() {
+  return (await loadIdentity()).id;
+}
+
+/** Full identity: { id, keypair, pubJwk } — used by the E2EE handshake. */
+export async function getIdentity() {
+  return loadIdentity();
 }

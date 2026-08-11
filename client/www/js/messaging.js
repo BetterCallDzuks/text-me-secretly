@@ -1,4 +1,11 @@
-// messaging.js — the app-level protocol over the P2P data channel.
+// messaging.js — the app-level protocol, carried over the ENCRYPTED transport.
+//
+// Every frame below is sealed by the E2EE session (see e2ee.js) before it
+// touches the data channel; this module never sees ciphertext and never sends
+// plaintext. The `transport` it is given exposes:
+//   transport.sendJson(obj)  -> Promise<bool>   (encrypted JSON frame)
+//   transport.sendChunk(u8)  -> Promise<bool>   (encrypted media chunk)
+//   events: 'frame' (decrypted object), 'chunk' (decrypted Uint8Array)
 //
 // Frame types (all JSON except raw media chunks):
 //   { t:'text',       id, ts, body, token? }
@@ -34,18 +41,19 @@ const CHUNK_SIZE = 16 * 1024; // 16 KiB — safe for SCTP data channels.
 
 export class Messaging extends EventTarget {
   /**
-   * @param {PeerConnection} peer
+   * @param {E2EESession} transport  encrypted transport (sendJson/sendChunk + 'frame'/'chunk')
    * @param {string} myId
    * @param {string} peerId
    */
-  constructor(peer, myId, peerId) {
+  constructor(transport, myId, peerId) {
     super();
-    this.peer = peer;
+    this.transport = transport;
     this.myId = myId;
     this.peerId = peerId;
     this._incomingMedia = null; // { id, mime, kind, received:[], size }
 
-    peer.addEventListener('data', (ev) => this._onData(ev.detail));
+    transport.addEventListener('frame', (ev) => this._onFrame(ev.detail));
+    transport.addEventListener('chunk', (ev) => this._onChunk(ev.detail));
   }
 
   // ---- Outgoing ------------------------------------------------------------
@@ -66,7 +74,7 @@ export class Messaging extends EventTarget {
       body,
       ...(gate.token ? { token: gate.token } : {}),
     };
-    const ok = this.peer.sendJson(frame);
+    const ok = await this.transport.sendJson(frame);
     if (ok) {
       await this._afterSend();
       this._emitLocalText(frame, true);
@@ -85,7 +93,7 @@ export class Messaging extends EventTarget {
     const buf = new Uint8Array(await blob.arrayBuffer());
     const chunks = Math.ceil(buf.length / CHUNK_SIZE) || 1;
 
-    this.peer.sendJson({
+    await this.transport.sendJson({
       t: 'media-meta',
       id,
       ts: Date.now(),
@@ -97,11 +105,10 @@ export class Messaging extends EventTarget {
     });
 
     for (let i = 0; i < chunks; i++) {
-      const slice = buf.subarray(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-      // Copy into a fresh ArrayBuffer so the transport owns it.
-      this.peer.sendBinary(slice.slice().buffer);
+      // Await each so encryption + ordering are preserved on the wire.
+      await this.transport.sendChunk(buf.subarray(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE));
     }
-    this.peer.sendJson({ t: 'media-end', id });
+    await this.transport.sendJson({ t: 'media-end', id });
 
     await this._afterSend();
     // Sender side: we do NOT keep the media either (view-once is mutual).
@@ -129,22 +136,15 @@ export class Messaging extends EventTarget {
     this.dispatchEvent(new CustomEvent('count', { detail: { count: n, limit: freeLimit() } }));
   }
 
-  // ---- Incoming ------------------------------------------------------------
+  // ---- Incoming (already decrypted by the transport) -----------------------
 
-  async _onData(data) {
-    // Binary chunk belonging to an in-flight media transfer.
-    if (data instanceof ArrayBuffer) {
-      if (this._incomingMedia) this._incomingMedia.received.push(new Uint8Array(data));
-      return;
-    }
+  /** A decrypted media chunk belonging to the in-flight transfer. */
+  _onChunk(u8) {
+    if (this._incomingMedia) this._incomingMedia.received.push(u8);
+  }
 
-    let frame;
-    try {
-      frame = JSON.parse(data);
-    } catch {
-      return;
-    }
-
+  /** A decrypted JSON frame. */
+  _onFrame(frame) {
     switch (frame.t) {
       case 'text':
         return this._onText(frame);
@@ -232,7 +232,7 @@ export class Messaging extends EventTarget {
     const ok = await verifyPeerToken(frame.token, this.peerId);
     if (!ok) {
       // Tell the sender why we dropped it so their UI can show the paywall.
-      this.peer.sendJson({ t: 'gate', reason: 'subscription-required' });
+      this.transport.sendJson({ t: 'gate', reason: 'subscription-required' });
       this.dispatchEvent(
         new CustomEvent('blocked-incoming', { detail: { from: this.peerId } })
       );
