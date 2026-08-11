@@ -8,13 +8,14 @@
 //   4. Run the freemium-gated messaging protocol.
 
 import { CONFIG } from './config.js';
-import { getIdentity } from './identity.js';
+import { getIdentity, getMnemonic, restoreFromMnemonic } from './identity.js';
 import { vpnGate } from './vpn.js';
 import { Signaling } from './signaling.js';
 import { PeerConnection } from './webrtc.js';
 import { E2EESession } from './e2ee.js';
 import { Messaging } from './messaging.js';
 import { purgeAll } from './ephemeral.js';
+import { store } from './storage.js';
 import {
   setServerConfig,
   setApiBase,
@@ -48,6 +49,17 @@ const ui = {
   paywallMsg: $('paywall-msg'),
   paywallSubscribe: $('paywall-subscribe'),
   paywallClose: $('paywall-close'),
+  accountBtn: $('account-btn'),
+  account: $('account'),
+  acctId: $('acct-id'),
+  acctCopyId: $('acct-copy-id'),
+  acctPhrase: $('acct-phrase'),
+  acctReveal: $('acct-reveal'),
+  acctCopyPhrase: $('acct-copy-phrase'),
+  acctRestoreInput: $('acct-restore-input'),
+  acctRestore: $('acct-restore'),
+  acctMsg: $('acct-msg'),
+  acctClose: $('acct-close'),
 };
 
 const state = {
@@ -126,6 +138,13 @@ async function startSession() {
   });
   state.signaling.addEventListener('signal', (ev) => handleSignal(ev.detail));
   state.signaling.connect(state.myId);
+
+  // First-run: nudge the user to back up their recovery phrase exactly once.
+  if (!(await store.get('tms.backupPrompted'))) {
+    await store.set('tms.backupPrompted', true);
+    openAccount();
+    ui.acctMsg.textContent = 'Welcome! Save your recovery phrase — it is the only way to restore this account.';
+  }
 }
 
 async function handleSignal(msg) {
@@ -375,6 +394,75 @@ async function doSubscribe() {
     ui.paywallSubscribe.textContent = 'Subscribe · €5/mo';
   }
 }
+
+// --- Account / recovery phrase ----------------------------------------------
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function openAccount() {
+  ui.acctId.textContent = state.myId;
+  // Reset the phrase to its hidden state each time the panel opens.
+  ui.acctPhrase.textContent = 'tap “Reveal” to show your 12-word recovery phrase';
+  ui.acctPhrase.classList.add('phrase--hidden');
+  ui.acctReveal.classList.remove('hidden');
+  ui.acctCopyPhrase.classList.add('hidden');
+  ui.acctRestoreInput.value = '';
+  ui.acctMsg.textContent = '';
+  ui.account.classList.remove('hidden');
+}
+
+async function revealPhrase() {
+  const phrase = await getMnemonic();
+  ui.acctPhrase.textContent = phrase;
+  ui.acctPhrase.classList.remove('phrase--hidden');
+  ui.acctReveal.classList.add('hidden');
+  ui.acctCopyPhrase.classList.remove('hidden');
+}
+
+async function doRestore() {
+  const phrase = ui.acctRestoreInput.value.trim();
+  if (!phrase) return;
+  ui.acctRestore.disabled = true;
+  ui.acctMsg.textContent = 'Restoring…';
+  try {
+    const identity = await restoreFromMnemonic(phrase);
+    // Switch the live identity over and re-register signaling under the new id.
+    state.identity = identity;
+    state.myId = identity.id;
+    ui.myId.textContent = identity.id;
+    ui.acctId.textContent = identity.id;
+    teardownPeer('Identity restored.');
+    if (state.signaling) {
+      state.signaling.disconnect();
+      state.signaling.connect(state.myId);
+    }
+    ui.acctMsg.textContent = 'Restored. You are now logged in as this ID.';
+    ui.acctRestoreInput.value = '';
+  } catch {
+    ui.acctMsg.textContent = 'That is not a valid 12-word recovery phrase.';
+  } finally {
+    ui.acctRestore.disabled = false;
+  }
+}
+
+ui.accountBtn.addEventListener('click', openAccount);
+ui.acctClose.addEventListener('click', () => ui.account.classList.add('hidden'));
+ui.acctReveal.addEventListener('click', revealPhrase);
+ui.acctCopyId.addEventListener('click', () => copyToClipboard(state.myId));
+ui.acctCopyPhrase.addEventListener('click', async () => {
+  const phrase = await getMnemonic();
+  const ok = await copyToClipboard(phrase);
+  ui.acctCopyPhrase.textContent = ok ? 'Copied' : 'Copy failed';
+  setTimeout(() => (ui.acctCopyPhrase.textContent = 'Copy'), 1500);
+});
+ui.acctRestore.addEventListener('click', doRestore);
 
 // --- Event listeners --------------------------------------------------------
 

@@ -111,6 +111,64 @@ body {
   background: rgba(248, 113, 113, 0.15);
   color: var(--danger);
 }
+.badge--muted {
+  background: var(--panel-2);
+  color: var(--muted);
+  border: none;
+  cursor: pointer;
+}
+.app__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Account / recovery overlay */
+.overlay__card--wide {
+  max-width: 420px;
+  text-align: left;
+}
+.acct-block {
+  margin: 16px 0;
+}
+.acct-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.acct-id {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.phrase {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.7;
+  word-spacing: 4px;
+  margin-bottom: 8px;
+}
+.phrase--hidden {
+  color: var(--muted);
+  filter: blur(5px);
+  font-style: italic;
+}
+.acct-warn {
+  font-size: 12px;
+  color: var(--danger);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+.acct-textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  margin-bottom: 8px;
+}
 
 .panel {
   padding: 16px;

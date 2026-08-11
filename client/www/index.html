@@ -36,6 +36,52 @@
       </div>
     </div>
 
+    <!-- ACCOUNT: contact address (public key) + recovery phrase (login/backup). -->
+    <div id="account" class="overlay hidden">
+      <div class="overlay__card overlay__card--wide">
+        <div class="overlay__icon">🔑</div>
+        <h1>Your account</h1>
+
+        <div class="acct-block">
+          <div class="acct-label">Your ID — share this so people can add you</div>
+          <div class="row">
+            <div id="acct-id" class="input mono acct-id">—</div>
+            <button id="acct-copy-id" class="btn btn--icon" title="Copy">⧉</button>
+          </div>
+        </div>
+
+        <div class="acct-block">
+          <div class="acct-label">Recovery phrase — your login. Keep it secret.</div>
+          <div id="acct-phrase" class="phrase phrase--hidden mono">
+            tap “Reveal” to show your 12-word recovery phrase
+          </div>
+          <div class="row">
+            <button id="acct-reveal" class="btn btn--ghost">Reveal</button>
+            <button id="acct-copy-phrase" class="btn btn--ghost hidden">Copy</button>
+          </div>
+          <div class="acct-warn">
+            Anyone with this phrase can restore your account and read your future
+            chats. Never share it.
+          </div>
+        </div>
+
+        <div class="acct-block">
+          <div class="acct-label">Restore / log in with a recovery phrase</div>
+          <textarea
+            id="acct-restore-input"
+            class="input mono acct-textarea"
+            placeholder="enter your 12 words, separated by spaces…"
+            autocomplete="off"
+            spellcheck="false"
+          ></textarea>
+          <button id="acct-restore" class="btn btn--primary">Restore</button>
+          <div id="acct-msg" class="status"></div>
+        </div>
+
+        <button id="acct-close" class="btn btn--ghost">Close</button>
+      </div>
+    </div>
+
     <!-- MAIN APP -->
     <div id="app" class="app hidden">
       <header class="app__header">
@@ -45,7 +91,10 @@
             Your ID: <span id="my-id" class="mono">—</span>
           </div>
         </div>
-        <div id="vpn-badge" class="badge badge--ok">VPN</div>
+        <div class="app__header-actions">
+          <button id="account-btn" class="badge badge--muted" title="Account & recovery">🔑</button>
+          <div id="vpn-badge" class="badge badge--ok">VPN</div>
+        </div>
       </header>
 
       <section id="connect-panel" class="panel">
