@@ -490,6 +490,11 @@ Coverage highlights:
 - **e2ee** — the Noise XX handshake establishes on the libsodium WASM backend,
   encrypts text + media both ways, drops tampered ciphertext (Poly1305), and
   rejects an identity-mismatch MITM.
+- **ephemeral** — `trackText` expiry + `remainingLabel` formatting; the 60s
+  sweeper (driven deterministically with `mock.timers`) removes an expired text
+  bubble and spares a live one; **view-once** media hands out a URL once and,
+  after `burnMedia`, the URL is revoked and a second `consumeMedia` returns null;
+  `purgeAll` burns everything.
 - **server** — issued RS256 tokens verify for the right anonId and are rejected
   for a different one; TURN credentials match coturn's HMAC scheme; the payment
   oracle's mock + webhook state transitions (extend-only, cancel, ignored
@@ -501,8 +506,9 @@ Coverage highlights:
   peers against the **real** signaling server, has them discover each other's
   anonId, open a **real WebRTC data channel**, complete the Noise XX handshake on
   libsodium WASM, and exchange messages that must decrypt and render on the
-  other side (both directions). This proves the whole stack — module loading,
-  WASM, DOM wiring, signaling, P2P transport, and E2EE — actually works, not just
+  other side (both directions) — including a **view-once image** that A sends and
+  B reveals on tap. This proves the whole stack — module loading, WASM, DOM
+  wiring, signaling, P2P transport, E2EE, and media — actually works, not just
   the units.
 
 **GitHub Actions** (`.github/workflows/ci.yml`) runs the unit suites and the

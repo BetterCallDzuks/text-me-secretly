@@ -202,6 +202,27 @@ async function main() {
   );
   check('A received & rendered B’s encrypted message', true);
 
+  // 7. View-once media: A sends a tiny PNG; B gets a "Tap to view once" bubble,
+  //    taps it, and the image reveals as an <img class="bubble__media-view">.
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    'base64'
+  );
+  await A.page.setInputFiles('#file-input', {
+    name: 'secret.png',
+    mimeType: 'image/png',
+    buffer: png,
+  });
+  // B should render an incoming view-once media bubble.
+  const mediaBubble = B.page.locator('.bubble--media', { hasText: 'Tap to view once' });
+  await mediaBubble.first().waitFor({ timeout: 15000 });
+  check('B sees the view-once media placeholder bubble', true);
+  // Tap to reveal exactly once.
+  await mediaBubble.first().click();
+  await B.page.waitForSelector('img.bubble__media-view', { timeout: 15000 });
+  const revealedSrc = await B.page.getAttribute('img.bubble__media-view', 'src');
+  check('B revealed the view-once image on tap', !!revealedSrc && revealedSrc.startsWith('blob:'));
+
   // Cleanup.
   await browser.close();
   staticSrv.close();
