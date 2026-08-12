@@ -457,7 +457,10 @@ Coverage highlights:
   encrypts text + media both ways, drops tampered ciphertext (Poly1305), and
   rejects an identity-mismatch MITM.
 - **server** — issued RS256 tokens verify for the right anonId and are rejected
-  for a different one; TURN credentials match coturn's HMAC scheme.
+  for a different one; TURN credentials match coturn's HMAC scheme; and the
+  WebSocket signaling relay is driven with real `ws` clients (registration,
+  verbatim point-to-point routing, and the bad-id / not-registered / unavailable
+  / displaced / disconnect paths).
 - **end-to-end** (`client/e2e/run.mjs`, Playwright) — boots two isolated Chromium
   peers against the **real** signaling server, has them discover each other's
   anonId, open a **real WebRTC data channel**, complete the Noise XX handshake on
