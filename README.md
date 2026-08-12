@@ -331,8 +331,14 @@ See `server/`. Key endpoints (`server/server.js`):
 | `GET /api/health`    | Liveness                                                       |
 
 The signaling relay keeps only an **in-memory `anonId → socket` map**, deleted on
-disconnect, and forwards SDP/ICE without reading their contents. The payment
-store lives in memory too (see **Payments** below).
+disconnect, and forwards SDP/ICE without reading their contents. It is hardened
+against abuse while staying content-blind (it only ever counts frames): a
+**64 KiB per-frame cap** (`maxPayload`), a **per-IP concurrent-connection cap**
+(default 20; excess closed with WS 1013), and a **per-connection message rate
+limit** (default 60 frames / 10s; over-budget frames dropped, one
+`rate-limited` notice per window). All limits are named constants, overridable
+via `attachSignaling(server, opts)`. The payment store lives in memory too (see
+**Payments** below).
 
 ### Payments: mock by default, Stripe when configured
 
@@ -485,10 +491,12 @@ Coverage highlights:
   encrypts text + media both ways, drops tampered ciphertext (Poly1305), and
   rejects an identity-mismatch MITM.
 - **server** — issued RS256 tokens verify for the right anonId and are rejected
-  for a different one; TURN credentials match coturn's HMAC scheme; and the
-  WebSocket signaling relay is driven with real `ws` clients (registration,
-  verbatim point-to-point routing, and the bad-id / not-registered / unavailable
-  / displaced / disconnect paths).
+  for a different one; TURN credentials match coturn's HMAC scheme; the payment
+  oracle's mock + webhook state transitions (extend-only, cancel, ignored
+  events); and the WebSocket signaling relay driven with real `ws` clients
+  (registration, verbatim routing, the bad-id / not-registered / unavailable /
+  displaced / disconnect paths, plus the per-connection rate limit and per-IP
+  connection cap).
 - **end-to-end** (`client/e2e/run.mjs`, Playwright) — boots two isolated Chromium
   peers against the **real** signaling server, has them discover each other's
   anonId, open a **real WebRTC data channel**, complete the Noise XX handshake on
