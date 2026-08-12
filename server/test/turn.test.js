@@ -39,3 +39,37 @@ test('ice list includes STUN and TURN with coturn-valid ephemeral credentials', 
     .digest('base64');
   assert.equal(t.credential, expected);
 });
+
+test('status() reports configured with correct counts and no secrets', () => {
+  const s = turn.status();
+  assert.equal(s.turnConfigured, true);
+  assert.equal(s.misconfigured, false);
+  assert.equal(s.stunCount, 1);
+  assert.equal(s.turnCount, 1);
+  assert.equal(s.ttlSeconds, 3600);
+
+  // Defense against accidental leakage: no value equals the secret or a
+  // freshly generated credential.
+  const { iceServers } = turn.iceServers(ANON);
+  const cred = iceServers.find((x) => x.credential).credential;
+  for (const v of Object.values(s)) {
+    assert.notEqual(v, 'shared-secret-for-tests');
+    assert.notEqual(v, cred);
+  }
+  // And no username/credential/secret keys at all.
+  assert.deepEqual(
+    Object.keys(s).sort(),
+    ['misconfigured', 'stunCount', 'ttlSeconds', 'turnConfigured', 'turnCount']
+  );
+});
+
+test('selfTest() returns { ok: true } when TURN is configured', () => {
+  const st = turn.selfTest();
+  assert.equal(st.ok, true);
+  assert.equal(st.reason, undefined);
+
+  // The generated TURN entry must carry username + credential.
+  const { iceServers } = turn.iceServers('probe1234abcd');
+  const t = iceServers.find((x) => x.username && x.credential);
+  assert.ok(t, 'TURN entry has username + credential');
+});
