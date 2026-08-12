@@ -44,6 +44,18 @@ const config = {
 
   freeMessagesPerContact: int('FREE_MESSAGES_PER_CONTACT', 20),
 
+  // --- Stripe (real payment gateway) ----------------------------------------
+  // All optional. When STRIPE_SECRET_KEY + STRIPE_PRICE_ID are set the payment
+  // module switches from the built-in mock to real Stripe Checkout; otherwise
+  // it stays fully mock so dev + tests run with no keys and no network.
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+  stripePriceId: process.env.STRIPE_PRICE_ID || '',
+  stripeSuccessUrl:
+    process.env.STRIPE_SUCCESS_URL || 'http://localhost:8080/subscribe/success',
+  stripeCancelUrl:
+    process.env.STRIPE_CANCEL_URL || 'http://localhost:8080/subscribe/cancel',
+
   // --- ICE / TURN for NAT traversal -----------------------------------------
   stunUrls: list('STUN_URLS').length
     ? list('STUN_URLS')
@@ -54,6 +66,10 @@ const config = {
 
   corsOrigins: list('CORS_ORIGINS').length ? list('CORS_ORIGINS') : ['*'],
 };
+
+// True only when we have enough to actually talk to Stripe. Everything else in
+// the codebase gates real-vs-mock on this single flag.
+config.stripeEnabled = Boolean(config.stripeSecretKey && config.stripePriceId);
 
 if (keys.generated) {
   // eslint-disable-next-line no-console

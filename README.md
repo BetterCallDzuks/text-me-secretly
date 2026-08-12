@@ -270,8 +270,8 @@ text-me-secretly/
 │   │   ├── signaling.js          # WebRTC signaling relay (no content inspection)
 │   │   ├── subscription.js       # RS256 JWT issue/verify
 │   │   ├── turn.js               # ephemeral TURN credentials (coturn REST)
-│   │   └── payment.js            # MOCK payment gateway (swap for Stripe here)
-│   └── test/                     # node --test: subscription, turn
+│   │   └── payment.js            # payment oracle: mock by default, Stripe when configured
+│   └── test/                     # node --test: subscription, turn, signaling, payment
 │
 ├── plugins/
 │   └── vpn-detector/             # Custom Capacitor plugin
@@ -322,17 +322,45 @@ See `server/`. Key endpoints (`server/server.js`):
 | -------------------- | -------------------------------------------------------------- |
 | `WS /signal`         | Register an anonId; relay `offer`/`answer`/`ice`/`bye` verbatim |
 | `GET /api/config`    | Public: free limit, price, currency (renders the paywall)      |
-| `POST /api/subscribe`| Mock-pay for an anonId, return an RS256 signed proof token     |
+| `POST /api/subscribe`| Start a subscription for an anonId. **Mock:** auto-pays, returns `{ token, expiresAt, plan }`. **Stripe:** returns `{ paid:false, provider:'stripe', checkoutUrl }` for the client to open |
 | `POST /api/token`    | Re-issue a token for an already-paid anonId                    |
+| `POST /api/stripe/webhook` | **Stripe mode only:** verifies the signature (raw body) and flips paid-state on `checkout.session.completed` / `customer.subscription.*` |
 | `GET /api/pubkey`    | RSA public key (JWK) for **offline** peer-token verification   |
 | `POST /api/verify`   | Verify a peer's token (fallback path only)                     |
 | `POST /api/turn`     | ICE servers: STUN + ephemeral TURN credentials                 |
 | `GET /api/health`    | Liveness                                                       |
 
 The signaling relay keeps only an **in-memory `anonId → socket` map**, deleted on
-disconnect, and forwards SDP/ICE without reading their contents. The mock
-payment store lives in memory too — replace `server/src/payment.js` with a real
-Stripe integration (webhook flips the paid flag) without touching anything else.
+disconnect, and forwards SDP/ICE without reading their contents. The payment
+store lives in memory too (see **Payments** below).
+
+### Payments: mock by default, Stripe when configured
+
+`server/src/payment.js` is the **only** PSP-aware module — an opaque oracle that
+answers "has this anonId paid, and until when?". It runs in one of two modes,
+gated on a single flag (`config.stripeEnabled`, true when `STRIPE_SECRET_KEY` +
+`STRIPE_PRICE_ID` are both set):
+
+- **Mock (default — no keys, no network).** `POST /api/subscribe` marks the
+  anonId paid immediately and returns the RS256 proof token. This keeps dev and
+  the whole test suite green with zero external dependencies.
+- **Stripe (keys present).** `POST /api/subscribe` creates a hosted **Stripe
+  Checkout Session** (`mode: 'subscription'`, line item `STRIPE_PRICE_ID`),
+  carrying the anonId in `client_reference_id` + `metadata.anonId`, and returns
+  `{ checkoutUrl }`. The client opens it and pays; Stripe then calls
+  `POST /api/stripe/webhook`, whose signature is verified against
+  `STRIPE_WEBHOOK_SECRET` using the **raw request body**. The handler flips
+  paid-state (`checkout.session.completed` grants the period;
+  `customer.subscription.updated/deleted` extend/clear it). The client, after
+  the redirect, calls `POST /api/token` to collect its RS256 proof once the
+  webhook has flipped state.
+
+The paid-state store is in-memory in both modes — a real deploy must swap the
+`Map` in `payment.js` for a durable store (Postgres/Redis), and register the
+webhook endpoint + a Price/Product in the Stripe dashboard, to go live. Config
+lives in `server/.env` (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`,
+`STRIPE_PRICE_ID`, `STRIPE_SUCCESS_URL`, `STRIPE_CANCEL_URL` — see
+`.env.example`).
 
 **Run locally:**
 
