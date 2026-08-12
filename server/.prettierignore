@@ -1,0 +1,9 @@
+node_modules
+
+# Secrets and generated keys — never touch.
+keys/
+*.pem
+
+# Docs and lockfiles.
+*.md
+package-lock.json

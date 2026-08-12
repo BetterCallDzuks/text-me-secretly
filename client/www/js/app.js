@@ -8,12 +8,7 @@
 //   4. Run the freemium-gated messaging protocol.
 
 import { CONFIG } from './config.js';
-import {
-  getIdentity,
-  getMnemonic,
-  restoreFromMnemonic,
-  setPassphrase,
-} from './identity.js';
+import { getIdentity, getMnemonic, restoreFromMnemonic, setPassphrase } from './identity.js';
 import { vpnGate } from './vpn.js';
 import { Signaling } from './signaling.js';
 import { PeerConnection } from './webrtc.js';
@@ -94,8 +89,7 @@ function lockForVpn() {
   ui.gate.classList.add('overlay--block');
   ui.gate.classList.remove('hidden');
   ui.app.classList.add('hidden');
-  ui.gateMsg.textContent =
-    'No VPN detected. Connect to your VPN to use Text Me Secretly.';
+  ui.gateMsg.textContent = 'No VPN detected. Connect to your VPN to use Text Me Secretly.';
   ui.gateRecheck.classList.remove('hidden');
   ui.vpnBadge.className = 'badge badge--bad';
 
@@ -157,7 +151,8 @@ async function startSession() {
   if (!(await store.get('tms.backupPrompted'))) {
     await store.set('tms.backupPrompted', true);
     openAccount();
-    ui.acctMsg.textContent = 'Welcome! Save your recovery phrase — it is the only way to restore this account.';
+    ui.acctMsg.textContent =
+      'Welcome! Save your recovery phrase — it is the only way to restore this account.';
   }
 }
 
@@ -226,12 +221,7 @@ function wirePeer() {
     // Run the E2EE handshake BEFORE any messaging. Chat opens only once the
     // channel is authenticated and keyed.
     ui.connStatus.textContent = 'Securing channel (Noise XX handshake)…';
-    state.session = new E2EESession(
-      state.peer,
-      state.identity,
-      state.peerId,
-      state.peer.initiator
-    );
+    state.session = new E2EESession(state.peer, state.identity, state.peerId, state.peer.initiator);
     state.session.addEventListener('established', () => {
       state.messaging = new Messaging(state.session, state.myId, state.peerId);
       wireMessaging();
@@ -519,9 +509,7 @@ ui.acctCopyPhrase.addEventListener('click', async () => {
 });
 ui.acctRestore.addEventListener('click', doRestore);
 ui.acctApplyPass.addEventListener('click', applyPassphrase);
-ui.safetyBar.addEventListener('click', () =>
-  ui.safetyDetail.classList.toggle('hidden')
-);
+ui.safetyBar.addEventListener('click', () => ui.safetyDetail.classList.toggle('hidden'));
 
 // --- Event listeners --------------------------------------------------------
 

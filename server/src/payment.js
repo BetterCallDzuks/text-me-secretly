@@ -144,11 +144,7 @@ function isActive(anonId) {
 function constructWebhookEvent(rawBody, signature) {
   const stripe = stripeClient();
   if (!stripe) throw new Error('stripe-not-configured');
-  return stripe.webhooks.constructEvent(
-    rawBody,
-    signature,
-    config.stripeWebhookSecret
-  );
+  return stripe.webhooks.constructEvent(rawBody, signature, config.stripeWebhookSecret);
 }
 
 /**

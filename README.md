@@ -520,9 +520,14 @@ Coverage highlights:
   wiring, signaling, P2P transport, E2EE, and media — actually works, not just
   the units.
 
-**GitHub Actions** (`.github/workflows/ci.yml`) runs the unit suites and the
-end-to-end browser test on every push and PR, and fails if the committed
-vendored bundles (`client/www/js/vendor/*`) don't match a fresh
+**Formatting** is enforced by **Prettier** (`npm run format:check` in each
+package; `npm run format` to fix). Config lives in `client/.prettierrc.json` /
+`server/.prettierrc.json`; the generated vendored bundles and Markdown are
+`.prettierignore`d.
+
+**GitHub Actions** (`.github/workflows/ci.yml`) runs the Prettier check, the unit
+suites, and the end-to-end browser test on every push and PR, and fails if the
+committed vendored bundles (`client/www/js/vendor/*`) don't match a fresh
 `npm run build:vendor` — so a source change without a rebuild can't slip through.
 
 ---

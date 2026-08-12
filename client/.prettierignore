@@ -1,0 +1,8 @@
+node_modules
+
+# Generated vendored crypto bundles — never hand-edit or reformat.
+www/js/vendor/
+
+# Docs and lockfiles.
+*.md
+package-lock.json

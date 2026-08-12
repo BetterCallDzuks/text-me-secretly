@@ -10,15 +10,8 @@ const revoked = [];
 globalThis.URL.createObjectURL = () => `blob:mock/${++urlCounter}`;
 globalThis.URL.revokeObjectURL = (url) => revoked.push(url);
 
-const {
-  TEXT_TTL_MS,
-  trackText,
-  remainingLabel,
-  stashMedia,
-  consumeMedia,
-  burnMedia,
-  purgeAll,
-} = await import('../www/js/ephemeral.js');
+const { TEXT_TTL_MS, trackText, remainingLabel, stashMedia, consumeMedia, burnMedia, purgeAll } =
+  await import('../www/js/ephemeral.js');
 
 // A DOM-less stand-in for a chat bubble element. `parentNode` must be truthy
 // for the sweeper to call remove() (it guards on entry.el.parentNode).

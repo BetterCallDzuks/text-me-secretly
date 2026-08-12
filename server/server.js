@@ -26,28 +26,24 @@ const app = express();
 // verification needs the exact bytes it signed, so this route gets the raw
 // buffer and the JSON parser never touches it. No-op path in mock mode (Stripe
 // simply never calls it).
-app.post(
-  '/api/stripe/webhook',
-  express.raw({ type: 'application/json' }),
-  (req, res) => {
-    if (!config.stripeEnabled) {
-      return res.status(404).json({ error: 'stripe-not-enabled' });
-    }
-    const signature = req.headers['stripe-signature'];
-    let event;
-    try {
-      event = payment.constructWebhookEvent(req.body, signature);
-    } catch (err) {
-      // Bad/missing signature, replayed, or malformed — reject.
-      return res.status(400).json({ error: 'invalid-signature' });
-    }
-
-    // Apply the state transition (mark/extend/clear paid). Persisted in the
-    // same in-memory store the mock uses — swap for a DB in production.
-    const result = payment.handleStripeEvent(event);
-    return res.status(200).json({ received: true, handled: result.handled });
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+  if (!config.stripeEnabled) {
+    return res.status(404).json({ error: 'stripe-not-enabled' });
   }
-);
+  const signature = req.headers['stripe-signature'];
+  let event;
+  try {
+    event = payment.constructWebhookEvent(req.body, signature);
+  } catch (err) {
+    // Bad/missing signature, replayed, or malformed — reject.
+    return res.status(400).json({ error: 'invalid-signature' });
+  }
+
+  // Apply the state transition (mark/extend/clear paid). Persisted in the
+  // same in-memory store the mock uses — swap for a DB in production.
+  const result = payment.handleStripeEvent(event);
+  return res.status(200).json({ received: true, handled: result.handled });
+});
 
 app.use(express.json({ limit: '8kb' })); // tokens are tiny; cap the body hard.
 
@@ -175,15 +171,11 @@ server.listen(config.port, config.host, () => {
   const ts = turn.status();
   /* eslint-disable no-console */
   if (ts.misconfigured) {
-    console.warn(
-      '[tms] TURN: half-configured — set BOTH TURN_URLS and TURN_SECRET, or neither'
-    );
+    console.warn('[tms] TURN: half-configured — set BOTH TURN_URLS and TURN_SECRET, or neither');
   } else if (ts.turnConfigured) {
     const st = turn.selfTest();
     if (st.ok) {
-      console.log(
-        `[tms] TURN: configured, credential self-test ok (ttl=${ts.ttlSeconds}s)`
-      );
+      console.log(`[tms] TURN: configured, credential self-test ok (ttl=${ts.ttlSeconds}s)`);
     } else {
       console.warn(`[tms] TURN: configured but self-test FAILED (${st.reason})`);
     }

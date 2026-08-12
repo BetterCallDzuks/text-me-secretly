@@ -21,8 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIR = path.resolve(__dirname, '..');
 const REPO_DIR = path.resolve(CLIENT_DIR, '..');
 const WWW_DIR = path.join(CLIENT_DIR, 'www');
-const CHROME =
-  process.env.TMS_CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const CHROME = process.env.TMS_CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 
 const MIME = {
   '.html': 'text/html',
@@ -50,7 +49,9 @@ function staticServer(dir, port) {
     if (!file.startsWith(dir)) return res.writeHead(403).end();
     fs.readFile(file, (err, data) => {
       if (err) return res.writeHead(404).end('not found');
-      res.writeHead(200, { 'content-type': MIME[path.extname(file)] || 'application/octet-stream' });
+      res.writeHead(200, {
+        'content-type': MIME[path.extname(file)] || 'application/octet-stream',
+      });
       res.end(data);
     });
   });
@@ -154,7 +155,8 @@ async function main() {
     );
     // Wait until signaling has connected + registered.
     await page.waitForFunction(
-      () => (document.getElementById('conn-status')?.textContent || '').includes('Signaling connected'),
+      () =>
+        (document.getElementById('conn-status')?.textContent || '').includes('Signaling connected'),
       { timeout: 15000 }
     );
     // Dismiss the account overlay if it happens to be open.

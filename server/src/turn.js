@@ -84,9 +84,7 @@ function selfTest() {
   }
   try {
     const { iceServers: servers } = iceServers('selftestprobe');
-    const turnEntry = servers.find(
-      (srv) => srv.username && srv.credential
-    );
+    const turnEntry = servers.find((srv) => srv.username && srv.credential);
     if (!turnEntry) {
       return { ok: false, reason: 'no-turn-entry' };
     }

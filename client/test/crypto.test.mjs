@@ -62,7 +62,10 @@ test('verifyJwtRs256 accepts valid tokens and rejects tampered/expired/wrong-sub
   // wrong expected sub
   assert.equal(await verifyJwtRs256(good, key, { ...opts, expectSub: 'SOMEONEELSE00000' }), null);
   // wrong audience
-  assert.equal(await verifyJwtRs256(good, key, { issuer: 'text-me-secretly', audience: 'nope' }), null);
+  assert.equal(
+    await verifyJwtRs256(good, key, { issuer: 'text-me-secretly', audience: 'nope' }),
+    null
+  );
   // expired
   const expired = makeRs256Jwt(privatePem, 'test-kid', { ...base, exp: now - 10 });
   assert.equal(await verifyJwtRs256(expired, key, opts), null);

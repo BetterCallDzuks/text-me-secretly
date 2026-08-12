@@ -16,9 +16,7 @@ export class PeerConnection extends EventTarget {
     this.signaling = signaling;
     this.peerId = peerId;
     this.initiator = initiator;
-    this.pc = new RTCPeerConnection(
-      iceServers && iceServers.length ? { iceServers } : RTC_CONFIG
-    );
+    this.pc = new RTCPeerConnection(iceServers && iceServers.length ? { iceServers } : RTC_CONFIG);
     this.channel = null;
 
     this.pc.addEventListener('icecandidate', (ev) => {
@@ -26,9 +24,7 @@ export class PeerConnection extends EventTarget {
     });
 
     this.pc.addEventListener('connectionstatechange', () => {
-      this.dispatchEvent(
-        new CustomEvent('state', { detail: this.pc.connectionState })
-      );
+      this.dispatchEvent(new CustomEvent('state', { detail: this.pc.connectionState }));
     });
 
     if (initiator) {
@@ -41,12 +37,8 @@ export class PeerConnection extends EventTarget {
   _setupChannel(ch) {
     this.channel = ch;
     ch.binaryType = 'arraybuffer';
-    ch.addEventListener('open', () =>
-      this.dispatchEvent(new Event('channelopen'))
-    );
-    ch.addEventListener('close', () =>
-      this.dispatchEvent(new Event('channelclose'))
-    );
+    ch.addEventListener('open', () => this.dispatchEvent(new Event('channelopen')));
+    ch.addEventListener('close', () => this.dispatchEvent(new Event('channelclose')));
     ch.addEventListener('message', (ev) =>
       this.dispatchEvent(new CustomEvent('data', { detail: ev.data }))
     );
