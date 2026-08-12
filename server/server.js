@@ -20,6 +20,35 @@ const turn = require('./src/turn');
 const { attachSignaling } = require('./src/signaling');
 
 const app = express();
+
+// --- Stripe webhook (RAW body) ---------------------------------------------
+// MUST be mounted BEFORE the global express.json() below: Stripe signature
+// verification needs the exact bytes it signed, so this route gets the raw
+// buffer and the JSON parser never touches it. No-op path in mock mode (Stripe
+// simply never calls it).
+app.post(
+  '/api/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  (req, res) => {
+    if (!config.stripeEnabled) {
+      return res.status(404).json({ error: 'stripe-not-enabled' });
+    }
+    const signature = req.headers['stripe-signature'];
+    let event;
+    try {
+      event = payment.constructWebhookEvent(req.body, signature);
+    } catch (err) {
+      // Bad/missing signature, replayed, or malformed — reject.
+      return res.status(400).json({ error: 'invalid-signature' });
+    }
+
+    // Apply the state transition (mark/extend/clear paid). Persisted in the
+    // same in-memory store the mock uses — swap for a DB in production.
+    const result = payment.handleStripeEvent(event);
+    return res.status(200).json({ received: true, handled: result.handled });
+  }
+);
+
 app.use(express.json({ limit: '8kb' })); // tokens are tiny; cap the body hard.
 
 app.use(
@@ -51,18 +80,33 @@ app.get('/api/config', (req, res) => {
 // --- Buy a subscription (mock) and receive a signed proof ------------------
 // The client calls this after the (mocked) payment succeeds. The returned
 // token is what the sender presents to a peer during the WebRTC handshake.
-app.post('/api/subscribe', apiLimiter, (req, res) => {
+app.post('/api/subscribe', apiLimiter, async (req, res) => {
   const anonId = req.body && req.body.anonId;
   if (typeof anonId !== 'string' || !ANON_ID_RE.test(anonId)) {
     return res.status(400).json({ error: 'invalid-anon-id' });
   }
 
-  const checkout = payment.createCheckout(anonId, config.subscriptionTtlDays);
-  if (!checkout.paid) {
-    // Real PSP path: return checkoutUrl and let a webhook flip the state.
-    return res.status(402).json({ error: 'payment-required', checkout });
+  let checkout;
+  try {
+    checkout = await payment.createCheckout(anonId, config.subscriptionTtlDays);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[tms] checkout creation failed:', err.message);
+    return res.status(502).json({ error: 'checkout-failed' });
   }
 
+  if (!checkout.paid) {
+    // Stripe path: hand back the hosted checkout URL. The client opens it, pays,
+    // and a webhook flips the paid state; the client then calls /api/token to
+    // collect its RS256 proof. No token here — payment isn't confirmed yet.
+    return res.status(200).json({
+      paid: false,
+      provider: checkout.provider,
+      checkoutUrl: checkout.checkoutUrl,
+    });
+  }
+
+  // Mock path: auto-paid, so issue the proof token immediately (today's shape).
   const { token, expiresAt } = subscription.issueToken(anonId, checkout.expiresAt);
   res.json({ token, expiresAt, plan: 'premium-monthly' });
 });

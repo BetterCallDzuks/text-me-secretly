@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test test/subscription.test.js test/turn.test.js test/signaling.test.js",
+    "test": "node --test test/subscription.test.js test/turn.test.js test/signaling.test.js test/payment.test.js",
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:reload": "pm2 reload ecosystem.config.js"
   },
@@ -20,6 +20,7 @@
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.0",
     "jsonwebtoken": "^9.0.2",
+    "stripe": "^22.5.0",
     "ws": "^8.18.0"
   },
   "license": "MIT"
