@@ -290,6 +290,7 @@ text-me-secretly/
     │   ├── sodium-adapter.mjs    # sodium-universal API shim over libsodium WASM
     │   └── mnemonic-entry.mjs    # re-exports BIP39 mnemonic helpers
     ├── test/                     # node --test: crypto, identity, mnemonic, e2ee
+    ├── e2e/                      # Playwright: real 2-peer browser + WebRTC test
     └── www/
         ├── index.html
         ├── css/style.css
@@ -439,8 +440,9 @@ Both packages ship a test suite built on Node's built-in runner (`node --test`)
 bundles.
 
 ```bash
-cd client && npm test    # crypto (RS256), identity/passphrase, mnemonic, Noise XX e2ee
-cd server && npm test    # subscription RS256 round-trip, TURN ephemeral credentials
+cd client && npm test        # crypto (RS256), identity/passphrase, mnemonic, Noise XX e2ee
+cd server && npm test        # subscription RS256 round-trip, TURN ephemeral credentials
+cd client && npm run test:e2e # real browser: two peers, real WebRTC, encrypted exchange
 ```
 
 Client tests run under Node via small browser-global shims (`test/_setup.mjs`).
@@ -456,11 +458,18 @@ Coverage highlights:
   rejects an identity-mismatch MITM.
 - **server** — issued RS256 tokens verify for the right anonId and are rejected
   for a different one; TURN credentials match coturn's HMAC scheme.
+- **end-to-end** (`client/e2e/run.mjs`, Playwright) — boots two isolated Chromium
+  peers against the **real** signaling server, has them discover each other's
+  anonId, open a **real WebRTC data channel**, complete the Noise XX handshake on
+  libsodium WASM, and exchange messages that must decrypt and render on the
+  other side (both directions). This proves the whole stack — module loading,
+  WASM, DOM wiring, signaling, P2P transport, and E2EE — actually works, not just
+  the units.
 
-**GitHub Actions** (`.github/workflows/ci.yml`) runs both suites on every push
-and PR, and fails if the committed vendored bundles (`client/www/js/vendor/*`)
-don't match a fresh `npm run build:vendor` — so a source change without a rebuild
-can't slip through.
+**GitHub Actions** (`.github/workflows/ci.yml`) runs the unit suites and the
+end-to-end browser test on every push and PR, and fails if the committed
+vendored bundles (`client/www/js/vendor/*`) don't match a fresh
+`npm run build:vendor` — so a source change without a rebuild can't slip through.
 
 ---
 
