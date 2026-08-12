@@ -6,6 +6,25 @@ on:
   pull_request:
 
 jobs:
+  format:
+    name: Formatting (prettier)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Client formatting
+        working-directory: client
+        run: |
+          npm ci
+          npm run format:check
+      - name: Server formatting
+        working-directory: server
+        run: |
+          npm ci
+          npm run format:check
+
   client:
     name: Client (crypto, identity, e2ee)
     runs-on: ubuntu-latest

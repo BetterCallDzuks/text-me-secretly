@@ -57,10 +57,13 @@ test('status() reports configured with correct counts and no secrets', () => {
     assert.notEqual(v, cred);
   }
   // And no username/credential/secret keys at all.
-  assert.deepEqual(
-    Object.keys(s).sort(),
-    ['misconfigured', 'stunCount', 'ttlSeconds', 'turnConfigured', 'turnCount']
-  );
+  assert.deepEqual(Object.keys(s).sort(), [
+    'misconfigured',
+    'stunCount',
+    'ttlSeconds',
+    'turnConfigured',
+    'turnCount',
+  ]);
 });
 
 test('selfTest() returns { ok: true } when TURN is configured', () => {

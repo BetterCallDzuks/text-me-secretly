@@ -8,6 +8,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test test/subscription.test.js test/turn.test.js test/turn-health.test.js test/signaling.test.js test/payment.test.js test/signaling-limits.test.js",
+    "format": "prettier --write \"*.js\" \"src/**/*.js\" \"test/**/*.js\"",
+    "format:check": "prettier --check \"*.js\" \"src/**/*.js\" \"test/**/*.js\"",
     "pm2:start": "pm2 start ecosystem.config.js",
     "pm2:reload": "pm2 reload ecosystem.config.js"
   },
@@ -23,5 +25,8 @@
     "stripe": "^22.5.0",
     "ws": "^8.18.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "prettier": "^3.9.6"
+  }
 }

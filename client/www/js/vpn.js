@@ -19,8 +19,7 @@ let pollTimer = null;
 async function check() {
   if (!VpnDetector) {
     // No plugin (plain browser). Honor the dev bypass flag, else fail closed.
-    const bypass =
-      typeof window !== 'undefined' && window.__TMS_DEV_ALLOW_NO_VPN__ === true;
+    const bypass = typeof window !== 'undefined' && window.__TMS_DEV_ALLOW_NO_VPN__ === true;
     return bypass;
   }
   try {

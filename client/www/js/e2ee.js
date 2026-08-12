@@ -135,9 +135,7 @@ export class E2EESession extends EventTarget {
     const payload = bytes.subarray(1);
     if (tag === TAG_JSON) {
       try {
-        this.dispatchEvent(
-          new CustomEvent('frame', { detail: JSON.parse(utf8.decode(payload)) })
-        );
+        this.dispatchEvent(new CustomEvent('frame', { detail: JSON.parse(utf8.decode(payload)) }));
       } catch {
         /* malformed frame */
       }

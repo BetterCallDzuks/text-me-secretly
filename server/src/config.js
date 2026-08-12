@@ -51,15 +51,11 @@ const config = {
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   stripePriceId: process.env.STRIPE_PRICE_ID || '',
-  stripeSuccessUrl:
-    process.env.STRIPE_SUCCESS_URL || 'http://localhost:8080/subscribe/success',
-  stripeCancelUrl:
-    process.env.STRIPE_CANCEL_URL || 'http://localhost:8080/subscribe/cancel',
+  stripeSuccessUrl: process.env.STRIPE_SUCCESS_URL || 'http://localhost:8080/subscribe/success',
+  stripeCancelUrl: process.env.STRIPE_CANCEL_URL || 'http://localhost:8080/subscribe/cancel',
 
   // --- ICE / TURN for NAT traversal -----------------------------------------
-  stunUrls: list('STUN_URLS').length
-    ? list('STUN_URLS')
-    : ['stun:stun.l.google.com:19302'],
+  stunUrls: list('STUN_URLS').length ? list('STUN_URLS') : ['stun:stun.l.google.com:19302'],
   turnUrls: list('TURN_URLS'), // e.g. turn:turn.example.com:3478?transport=udp
   turnSecret: process.env.TURN_SECRET || '', // coturn `use-auth-secret` shared secret
   turnTtlSeconds: int('TURN_TTL_SECONDS', 24 * 60 * 60),

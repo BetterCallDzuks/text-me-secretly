@@ -2,11 +2,7 @@ import './_setup.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import {
-  generateMnemonic,
-  validateMnemonic,
-  mnemonicToSeed32,
-} from '../www/js/vendor/mnemonic.js';
+import { generateMnemonic, validateMnemonic, mnemonicToSeed32 } from '../www/js/vendor/mnemonic.js';
 import { curve, ready } from '../www/js/vendor/noise-xx.js';
 import { fingerprintOfRawKey } from '../www/js/crypto.js';
 

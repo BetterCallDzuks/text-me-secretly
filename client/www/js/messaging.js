@@ -29,13 +29,7 @@ import {
   getToken,
   verifyPeerToken,
 } from './subscription.js';
-import {
-  trackText,
-  remainingLabel,
-  stashMedia,
-  consumeMedia,
-  burnMedia,
-} from './ephemeral.js';
+import { trackText, remainingLabel, stashMedia, consumeMedia, burnMedia } from './ephemeral.js';
 
 const CHUNK_SIZE = 16 * 1024; // 16 KiB — safe for SCTP data channels.
 
@@ -233,9 +227,7 @@ export class Messaging extends EventTarget {
     if (!ok) {
       // Tell the sender why we dropped it so their UI can show the paywall.
       this.transport.sendJson({ t: 'gate', reason: 'subscription-required' });
-      this.dispatchEvent(
-        new CustomEvent('blocked-incoming', { detail: { from: this.peerId } })
-      );
+      this.dispatchEvent(new CustomEvent('blocked-incoming', { detail: { from: this.peerId } }));
       return false;
     }
     return true;
