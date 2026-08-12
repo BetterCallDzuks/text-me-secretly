@@ -41,3 +41,21 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm test
+
+  e2e:
+    name: End-to-end (real browser + WebRTC)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      # Server deps are needed too — the e2e boots the real signaling server.
+      - run: npm ci
+        working-directory: server
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
