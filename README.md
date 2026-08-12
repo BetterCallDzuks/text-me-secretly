@@ -328,7 +328,14 @@ See `server/`. Key endpoints (`server/server.js`):
 | `GET /api/pubkey`    | RSA public key (JWK) for **offline** peer-token verification   |
 | `POST /api/verify`   | Verify a peer's token (fallback path only)                     |
 | `POST /api/turn`     | ICE servers: STUN + ephemeral TURN credentials                 |
+| `GET /api/turn/health` | Secret-free TURN status: `{ turnConfigured, misconfigured, stunCount, turnCount, ttlSeconds }` |
 | `GET /api/health`    | Liveness                                                       |
+
+At startup the server runs a **TURN self-test** and logs the result — `not
+configured (STUN-only)`, `configured, credential self-test ok`, or a warning for
+a **half-configured** deployment (only one of `TURN_URLS`/`TURN_SECRET` set). It
+never crashes on TURN misconfig; `GET /api/turn/health` exposes the same status
+(no secret or credential ever included) for ops checks.
 
 The signaling relay keeps only an **in-memory `anonId → socket` map**, deleted on
 disconnect, and forwards SDP/ICE without reading their contents. It is hardened
@@ -501,7 +508,9 @@ Coverage highlights:
   events); and the WebSocket signaling relay driven with real `ws` clients
   (registration, verbatim routing, the bad-id / not-registered / unavailable /
   displaced / disconnect paths, plus the per-connection rate limit and per-IP
-  connection cap).
+  connection cap); and the TURN `status()` / `selfTest()` diagnostics (configured
+  vs half-configured vs STUN-only, with a leak-check that no secret/credential
+  appears in the status).
 - **end-to-end** (`client/e2e/run.mjs`, Playwright) — boots two isolated Chromium
   peers against the **real** signaling server, has them discover each other's
   anonId, open a **real WebRTC data channel**, complete the Noise XX handshake on

@@ -155,6 +155,9 @@ app.post('/api/turn', apiLimiter, (req, res) => {
 
 app.get('/api/health', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
+// --- TURN diagnostics (secret-free, safe to expose to ops/clients) ---------
+app.get('/api/turn/health', (req, res) => res.json(turn.status()));
+
 // --- HTTP + WebSocket on the same port -------------------------------------
 const server = http.createServer(app);
 const signaling = attachSignaling(server);
@@ -167,6 +170,27 @@ server.listen(config.port, config.host, () => {
     `[tms] signaling+api listening on http://${config.host}:${config.port} ` +
       `(WS path /signal) — free msgs/contact: ${config.freeMessagesPerContact}`
   );
+
+  // TURN startup self-test — log a clear one-liner, never crash on misconfig.
+  const ts = turn.status();
+  /* eslint-disable no-console */
+  if (ts.misconfigured) {
+    console.warn(
+      '[tms] TURN: half-configured — set BOTH TURN_URLS and TURN_SECRET, or neither'
+    );
+  } else if (ts.turnConfigured) {
+    const st = turn.selfTest();
+    if (st.ok) {
+      console.log(
+        `[tms] TURN: configured, credential self-test ok (ttl=${ts.ttlSeconds}s)`
+      );
+    } else {
+      console.warn(`[tms] TURN: configured but self-test FAILED (${st.reason})`);
+    }
+  } else {
+    console.log('[tms] TURN: not configured (STUN-only)');
+  }
+  /* eslint-enable no-console */
 });
 
 function shutdown(signal) {

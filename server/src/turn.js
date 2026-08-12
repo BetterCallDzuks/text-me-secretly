@@ -46,4 +46,54 @@ function iceServers(anonId) {
   return { iceServers: servers, ttl: 0 };
 }
 
-module.exports = { iceServers };
+/**
+ * Secret-free summary of the TURN configuration, safe to expose to ops/clients.
+ * Never includes the shared secret, URL-embedded credentials, or any generated
+ * ephemeral credential.
+ *
+ * @returns {{ turnConfigured: boolean, misconfigured: boolean,
+ *             stunCount: number, turnCount: number, ttlSeconds: number }}
+ */
+function status() {
+  const hasUrls = config.turnUrls.length > 0;
+  const hasSecret = Boolean(config.turnSecret);
+  return {
+    turnConfigured: hasUrls && hasSecret,
+    // Exactly one of the two set — a half-configured deployment (a footgun).
+    misconfigured: hasUrls !== hasSecret,
+    stunCount: config.stunUrls.length,
+    turnCount: config.turnUrls.length,
+    ttlSeconds: config.turnTtlSeconds,
+  };
+}
+
+/**
+ * Startup self-test. When TURN is configured, actually exercises the HMAC
+ * credential path (generates an ICE list for a probe id) and confirms a TURN
+ * entry with a non-empty username + credential comes out. Never throws.
+ *
+ * @returns {{ ok: boolean, reason?: string }}
+ */
+function selfTest() {
+  const s = status();
+  if (s.misconfigured) {
+    return { ok: false, reason: 'half-configured' };
+  }
+  if (!s.turnConfigured) {
+    return { ok: false, reason: 'not-configured' };
+  }
+  try {
+    const { iceServers: servers } = iceServers('selftestprobe');
+    const turnEntry = servers.find(
+      (srv) => srv.username && srv.credential
+    );
+    if (!turnEntry) {
+      return { ok: false, reason: 'no-turn-entry' };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err.message };
+  }
+}
+
+module.exports = { iceServers, status, selfTest };
